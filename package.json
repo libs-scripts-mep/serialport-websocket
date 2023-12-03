@@ -1,0 +1,17 @@
+{
+  "name": "serialport-websocket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "socket.io": "^4.7.2"
+  }
+}
