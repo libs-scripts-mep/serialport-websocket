@@ -1,17 +1,31 @@
 {
-  "name": "serialport-websocket",
+  "name": "@libs-scripts-mep/serialport-websocket",
   "version": "1.0.0",
-  "description": "",
-  "main": "src/server.js",
-  "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
+  "description": "Biblioteca que permite gerenciar portas seriais através do browser via websocket",
+  "main": "client.js",
   "dependencies": {
     "serialport": "^12.0.0",
     "socket.io": "^4.7.2"
-  }
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/libs-scripts-mep/serialport-websocket.git"
+  },
+  "keywords": [
+    "serialport",
+    "websocket",
+    "socket",
+    "serial"
+  ],
+  "author": "Lucas Kroth",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/libs-scripts-mep/serialport-websocket/issues"
+  },
+  "homepage": "https://github.com/libs-scripts-mep/serialport-websocket#readme"
 }
