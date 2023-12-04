@@ -2,8 +2,12 @@ import { createServer } from 'node:http'
 import { Server } from 'socket.io'
 import { SerialPort } from 'serialport'
 
+const REQUEST_MONITOR_TIMEOUT = 30000
+
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
+
+let lastMessageTimestanmp = performance.now()
 
 try {
   io.on('connection', (socket) => {
@@ -56,6 +60,13 @@ try {
 }
 
 http.listen(3000, () => { console.log('Serial WebSocket executando em http://localhost:3000') })
+
+const requestMonitor = setInterval(() => {
+  const elapsedTimeLastMsg = performance.now() - lastMessageTimestanmp
+  if (elapsedTimeLastMsg > REQUEST_MONITOR_TIMEOUT) {
+    process.exit(1)
+  }
+}, 5000)
 
 export class SerialPortManager {
 
