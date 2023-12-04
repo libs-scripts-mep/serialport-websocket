@@ -1,7 +1,7 @@
 import Log from "../script-loader/utils-script.js"
+import { RastUtil } from "../rast-pvi/rast-pvi.js"
 import FWLink from "../daq-fwlink/FWLink.js"
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
-import { SocketEvents } from "./server.js"
 
 export class Socket {
     static IO = io('http://localhost:3000')
@@ -9,19 +9,33 @@ export class Socket {
     static PortList = null
     static DebugMode = false
 
-    static startObservers() {
-        Socket.IO.on(SocketEvents.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
-        Socket.IO.on(SocketEvents.SERVER_ERROR, (error) => { console.error(error); Socket.Error = error })
+    static Events = {
+        PORTLIST_REQ: "port-list-req",
+        PORTLIST_RES: "port-list-res",
+        OPEN_PORT_REQ: "open-port-req",
+        OPEN_PORT_RES: "open-port-res",
+        CLOSE_PORT_REQ: "close-port-req",
+        CLOSE_PORT_RES: "close-port-res",
+        READ_FROM_REQ: "rx-buffer-req",
+        READ_FROM_RES: "rx-buffer-res",
+        WRITE_TO_REQ: "tx-buffer-req",
+        WRITE_TO_RES: "tx-buffer-res",
+        SERVER_ERROR: "server-error",
+    }
 
-        Socket.IO.on(SocketEvents.OPEN_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
-        Socket.IO.on(SocketEvents.CLOSE_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
-        Socket.IO.on(SocketEvents.WRITE_TO_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
-        Socket.IO.on(SocketEvents.READ_FROM_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
+    static startObservers() {
+        Socket.IO.on(Socket.Events.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
+        Socket.IO.on(Socket.Events.SERVER_ERROR, (error) => { console.error(error); Socket.Error = error })
+
+        Socket.IO.on(Socket.Events.OPEN_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
+        Socket.IO.on(Socket.Events.CLOSE_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
+        Socket.IO.on(Socket.Events.WRITE_TO_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
+        Socket.IO.on(Socket.Events.READ_FROM_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
     }
 
     static getPortList() {
         return new Promise(async (resolve) => {
-            Socket.IO.emit(SocketEvents.PORTLIST_REQ)
+            Socket.IO.emit(Socket.Events.PORTLIST_REQ)
 
             while (this.PortList == null) { await SerialUtil.Delay(10) }
 
@@ -39,7 +53,7 @@ export class Socket {
                 FWLink.runInstructionS("EXEC",
                     [
                         "node",
-                        `C:/Users/lucas.kroth/Desktop/serialport-websocket/src/server.js`,
+                        `${RastUtil.getScriptPath()}/node_modules/@libs-scripts-mep/serialport-websocket/server.js`,
                         "true",
                         "true"
                     ],

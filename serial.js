@@ -1,4 +1,3 @@
-import { SocketEvents } from "./server.js"
 import { Socket } from "./client.js"
 
 /**
@@ -52,10 +51,10 @@ export class Serial {
 
     /**Inicializa os callbacks que serão executados quando o servidor websocket responder a partir de um comando */
     startSocketCallbacks() {
-        Socket.IO.on(SocketEvents.OPEN_PORT_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.OpenResult = res } } })
-        Socket.IO.on(SocketEvents.CLOSE_PORT_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CloseResult = res } } })
-        Socket.IO.on(SocketEvents.WRITE_TO_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.WriteResult = res } } })
-        Socket.IO.on(SocketEvents.READ_FROM_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadResult = res } } })
+        Socket.IO.on(Socket.Events.OPEN_PORT_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.OpenResult = res } } })
+        Socket.IO.on(Socket.Events.CLOSE_PORT_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CloseResult = res } } })
+        Socket.IO.on(Socket.Events.WRITE_TO_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.WriteResult = res } } })
+        Socket.IO.on(Socket.Events.READ_FROM_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadResult = res } } })
     }
 
     /**Atualiza as informações da porta serial desta instância */
@@ -77,7 +76,7 @@ export class Serial {
      */
     async close() {
         return new Promise(async (resolve) => {
-            Socket.IO.emit(SocketEvents.CLOSE_PORT_REQ, this.TAG)
+            Socket.IO.emit(Socket.Events.CLOSE_PORT_REQ, this.TAG)
 
             while (this.CloseResult == null) { await SerialUtil.Delay(10) }
             Log.console(this.CloseResult.msg, this.CloseResult.success ? this.Log.success : this.Log.error)
@@ -103,7 +102,7 @@ export class Serial {
      */
     async open() {
         return new Promise(async (resolve) => {
-            Socket.IO.emit(SocketEvents.OPEN_PORT_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG } })
+            Socket.IO.emit(Socket.Events.OPEN_PORT_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG } })
 
             while (this.OpenResult == null) { await SerialUtil.Delay(10) }
             Log.console(this.OpenResult.msg, this.OpenResult.success ? this.Log.success : this.Log.error)
@@ -141,9 +140,10 @@ export class Serial {
         return new Promise(async (resolve) => {
             timeout ? await SerialUtil.Delay(timeout) : null
 
-            Socket.IO.emit(SocketEvents.READ_FROM_REQ, { tagName: this.TAG, encoding })
+            Socket.IO.emit(Socket.Events.READ_FROM_REQ, { tagName: this.TAG, encoding })
 
             while (this.ReadResult == null) { await SerialUtil.Delay(10) }
+            this.ReadResult.msg == null ? null : this.ReadResult.msg = this.ReadResult.msg.toUpperCase()
             Log.console(`R ${this.ReadResult.path}: ${this.ReadResult.msg}`, this.ReadResult.success ? this.Log.res : this.Log.error)
 
             resolve(this.ReadResult)
@@ -191,7 +191,7 @@ export class Serial {
     async write(content, encoding = SerialUtil.Encoders.HEX) {
         return new Promise(async (resolve) => {
             if (this.PORT != null) {
-                Socket.IO.emit(SocketEvents.WRITE_TO_REQ, { tagName: this.TAG, message: { content, encoding } })
+                Socket.IO.emit(Socket.Events.WRITE_TO_REQ, { tagName: this.TAG, message: { content, encoding } })
 
                 while (this.WriteResult == null) { await SerialUtil.Delay(10) }
                 Log.console(`W ${this.WriteResult.path}: ${this.WriteResult.msg}`, this.WriteResult.success ? this.Log.req : this.Log.error)
@@ -529,9 +529,9 @@ export class SerialUtil {
         const result = []
         if (buffer != null) {
             for (const data of buffer) {
-                result.push(data.toString(16).toUpperCase().padStart(size, '0')).join(separator)
+                result.push(data.toString(16).toUpperCase().padStart(size, '0'))
             }
-            return result
+            return result.join(separator)
         }
         return ""
     }
