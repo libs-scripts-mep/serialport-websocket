@@ -3,21 +3,29 @@ import { Server } from 'socket.io'
 import { SerialPort } from 'serialport'
 
 const REQUEST_MONITOR_TIMEOUT = 30000
+let lastMessageTimestanmp = performance.now()
+
+const timeoutRequestMonitor = setInterval(() => {
+  const elapsedTimeLastMsg = performance.now() - lastMessageTimestanmp
+  if (elapsedTimeLastMsg > REQUEST_MONITOR_TIMEOUT) {
+    process.exit(1)
+  }
+}, 5000)
 
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
-
-let lastMessageTimestanmp = performance.now()
 
 try {
   io.on('connection', (socket) => {
 
     socket.on(SocketEvents.PORTLIST_REQ, async () => {
+      lastMessageTimestanmp = performance.now()
       console.log("portlist request")
       io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
     })
 
     socket.on(SocketEvents.OPEN_PORT_REQ, async (obj) => {
+      lastMessageTimestanmp = performance.now()
       console.log("open request", obj)
       if (obj.portInfo == undefined || obj.portInfo == null || obj.config == undefined) {
         io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\n portInfo: ${obj.portInfo}\nconfig: ${obj.config}`)
@@ -27,6 +35,7 @@ try {
     })
 
     socket.on(SocketEvents.CLOSE_PORT_REQ, async (tagName) => {
+      lastMessageTimestanmp = performance.now()
       console.log("close request", tagName)
       if (tagName == undefined || typeof tagName != "string") {
         io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incorretos:\ntagName: ${tagName}`)
@@ -36,6 +45,7 @@ try {
     })
 
     socket.on(SocketEvents.WRITE_TO_REQ, async (obj) => {
+      lastMessageTimestanmp = performance.now()
       console.log("write request", obj)
       if (obj.tagName == undefined || obj.message == undefined) {
         io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\ntagName: ${obj.tagName}\nmessage: ${obj.message}`)
@@ -45,6 +55,7 @@ try {
     })
 
     socket.on(SocketEvents.READ_FROM_REQ, async (obj) => {
+      lastMessageTimestanmp = performance.now()
       console.log("read request", obj)
       if (obj.tagName == undefined) {
         io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\ntagName: ${obj.tagName}`)
@@ -60,13 +71,6 @@ try {
 }
 
 http.listen(3000, () => { console.log('Serial WebSocket executando em http://localhost:3000') })
-
-const requestMonitor = setInterval(() => {
-  const elapsedTimeLastMsg = performance.now() - lastMessageTimestanmp
-  if (elapsedTimeLastMsg > REQUEST_MONITOR_TIMEOUT) {
-    process.exit(1)
-  }
-}, 5000)
 
 export class SerialPortManager {
 
