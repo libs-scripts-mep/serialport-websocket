@@ -123,7 +123,7 @@ io.on('connection', (socket) => {
     if (isNaN(obj.startAddress) || isNaN(obj.qty) || obj.tagName == null || obj.tagName == undefined) {
       io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.startAddress}\nquantity: ${obj.qty}\ntagName: ${obj.tagName}`)
     } else {
-      io.emit(SocketEvents.READ_HOLDING_REGISTERS_RES, await ModbusDeviceManager.readInputRegisters(obj.tagName, obj.startAddress, obj.qty))
+      io.emit(SocketEvents.READ_HOLDING_REGISTERS_RES, await ModbusDeviceManager.readHoldingRegisters(obj.tagName, obj.startAddress, obj.qty))
     }
   })
 
@@ -183,16 +183,31 @@ export class SerialPortManager {
 
         const port = this.openPorts.get(config.tagName)
 
-        if (port.isOpen) {
-          resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta previamente aberta` })
+        if (port.path == portInfo.path) {
+          if (port.isOpen) {
+            resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta previamente aberta` })
+          } else {
+            port.open((error) => {
+              error != null
+                ? resolve({ path: port.path, success: false, msg: error.message })
+                : resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta aberta com sucesso` })
+            })
+          }
         } else {
-          port.open((error) => {
-            error != null
-              ? resolve({ path: port.path, success: false, msg: error.message })
-              : resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta aberta com sucesso` })
-          })
+          if (port.isOpen) {
+            port.close((error) => {
+              if (error != null) {
+                resolve({ path: port.path, success: true, msg: error.message })
+              } else {
+                this.openPorts.delete(config.tagName)
+                resolve(this.open(portInfo, config))
+              }
+            })
+          } else {
+            this.openPorts.delete(config.tagName)
+            resolve(this.open(portInfo, config))
+          }
         }
-
       } else {
         for (const port of this.ports) {
           if (port.path == portInfo.path && port.pnpId == portInfo.pnpId) {

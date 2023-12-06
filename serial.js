@@ -468,6 +468,7 @@ export class SerialReqManager extends Serial {
                         if (result.success) { return { success: true, port: this.PORT, msg: "Sucesso ao descobrir porta serial" } }
                         else { await this.close() }
                     }
+                    await SerialUtil.Delay(20)
                 }
             }
 

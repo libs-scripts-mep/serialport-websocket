@@ -84,12 +84,12 @@ export class Modbus extends SerialReqManager {
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
             Log.console(`MDB F03 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
-            while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
+            while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
 
-            this.ReadInputRegistersResult.success ? console.log(this.ReadInputRegistersResult.msg) : Log.console(this.ReadInputRegistersResult.msg, this.Log.error)
+            this.ReadHoldingRegistersResult.success ? console.log(this.ReadHoldingRegistersResult.msg) : Log.console(this.ReadHoldingRegistersResult.msg, this.Log.error)
 
-            resolve(this.ReadInputRegistersResult)
-            this.ReadInputRegistersResult = null
+            resolve(this.ReadHoldingRegistersResult)
+            this.ReadHoldingRegistersResult = null
         })
     }
 
