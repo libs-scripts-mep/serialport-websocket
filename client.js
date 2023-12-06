@@ -10,8 +10,11 @@ export class Socket {
     static DebugMode = false
 
     static Events = {
+        //Global socket commands
+        SERVER_ERROR: "server-error",
         PORTLIST_REQ: "port-list-req",
         PORTLIST_RES: "port-list-res",
+        //Commom serial commands
         OPEN_PORT_REQ: "open-port-req",
         OPEN_PORT_RES: "open-port-res",
         CLOSE_PORT_REQ: "close-port-req",
@@ -20,7 +23,21 @@ export class Socket {
         READ_FROM_RES: "rx-buffer-res",
         WRITE_TO_REQ: "tx-buffer-req",
         WRITE_TO_RES: "tx-buffer-res",
-        SERVER_ERROR: "server-error",
+        //Modbus only commands
+        CREATE_MODBUS_REQ: "create-mdb-slave-req",
+        CREATE_MODBUS_RES: "create-mdb-slave-res",
+        SET_NODE_ADDRESS_REQ: "set-mdb-slave-addr-req",
+        SET_NODE_ADDRESS_RES: "set-mdb-slave-addr-res",
+        READ_DEVICE_ID_REQ: "read-device-id-req",
+        READ_DEVICE_ID_RES: "read-device-id-res",
+        READ_INPUT_REGISTERS_REQ: "read-mdb-input-regs-req",
+        READ_INPUT_REGISTERS_RES: "read-mdb-input-regs-res",
+        READ_HOLDING_REGISTERS_REQ: "read-mdb-holding-regs-req",
+        READ_HOLDING_REGISTERS_RES: "read-mdb-holding-regs-res",
+        WRTIE_HOLDING_REGISTER_REQ: "write-mdb-holding-reg-req",
+        WRTIE_HOLDING_REGISTER_RES: "write-mdb-holding-reg-res",
+        WRTIE_HOLDING_REGISTERS_REQ: "write-mdb-holding-regs-req",
+        WRTIE_HOLDING_REGISTERS_RES: "write-mdb-holding-regs-res",
     }
 
     static startObservers() {
