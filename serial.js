@@ -102,7 +102,7 @@ export class Serial {
      */
     async open() {
         return new Promise(async (resolve) => {
-            Socket.IO.emit(Socket.Events.OPEN_PORT_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG } })
+            Socket.IO.emit(Socket.Events.OPEN_PORT_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG, parity: this.PARITY } })
 
             while (this.OpenResult == null) { await SerialUtil.Delay(10) }
             Log.console(this.OpenResult.msg, this.OpenResult.success ? this.Log.success : this.Log.error)
@@ -298,22 +298,19 @@ export class SerialReqManager extends Serial {
     }
 
     async Manager() {
-        if (this.hasReqToSend() && this.Processing) {
+        while (true) {
+            if (this.hasReqToSend() && this.Processing) {
 
-            const nextReq = this.GetReq()
-            const result = await this.reqResMatchBytes(nextReq)
+                const nextReq = this.GetReq()
+                const result = await this.reqResMatchBytes(nextReq)
 
-            nextReq["matchResult"] = result.response
-            nextReq["response"] = result.response == null ? "" : result.response[0]
-            nextReq["success"] = result.success
+                nextReq["matchResult"] = result.response
+                nextReq["response"] = result.response == null ? "" : result.response[0]
+                nextReq["success"] = result.success
 
-            this.ResBuffer.push(nextReq)
-            this.Manager()
-
-        } else {
-            setTimeout(() => {
-                this.Manager()
-            }, this.ManagerInterval)
+                this.ResBuffer.push(nextReq)
+            }
+            await SerialUtil.Delay(this.ManagerInterval)
         }
     }
 

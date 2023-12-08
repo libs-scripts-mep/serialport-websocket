@@ -30,7 +30,7 @@ export class Modbus extends SerialReqManager {
 
     async create() {
         return new Promise(async (resolve) => {
-            Socket.IO.emit(Socket.Events.CREATE_MODBUS_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG } })
+            Socket.IO.emit(Socket.Events.CREATE_MODBUS_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } })
 
             while (this.CreateResult == null) { await SerialUtil.Delay(10) }
             Log.console(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.CreateResult.success ? this.Log.success : this.Log.error)

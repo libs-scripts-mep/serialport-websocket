@@ -11,6 +11,7 @@ export class Socket {
 
     static Events = {
         //Global socket commands
+        KEEP_ALIVE: "keep-alive",
         SERVER_ERROR: "server-error",
         PORTLIST_REQ: "port-list-req",
         PORTLIST_RES: "port-list-res",
@@ -61,10 +62,16 @@ export class Socket {
         })
     }
 
+    static keepAlive() {
+        setInterval(() => {
+            Socket.IO.emit(Socket.Events.KEEP_ALIVE)
+        }, 1000)
+    }
+
     static {
         window.Socket = Socket
         Socket.startObservers()
-
+        Socket.keepAlive()
         setTimeout(() => {
             if (!Socket.IO.connected) {
                 FWLink.runInstructionS("EXEC",

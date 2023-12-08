@@ -4,6 +4,7 @@ import { SerialPort } from 'serialport'
 import ModbusRTU from "modbus-serial"
 
 export class SocketEvents {
+  static KEEP_ALIVE = "keep-alive"
   static PORTLIST_REQ = "port-list-req"
   static PORTLIST_RES = "port-list-res"
   static OPEN_PORT_REQ = "open-port-req"
@@ -31,22 +32,26 @@ export class SocketEvents {
   static WRTIE_HOLDING_REGISTERS_RES = "write-mdb-holding-regs-res"
 }
 
-const REQUEST_MONITOR_TIMEOUT = 30000
-
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
 
-let lastMessageTimestanmp = performance.now()
+const KEEP_ALIVE_TIMEOUT = 10000
+let keepAliveMsgTimestanmp = performance.now()
 
-const requestMonitor = setInterval(() => {
-  const elapsedTimeLastMsg = performance.now() - lastMessageTimestanmp
-  if (elapsedTimeLastMsg > REQUEST_MONITOR_TIMEOUT) {
+setInterval(() => {
+  const elapsedKeepAliveTimer = performance.now() - keepAliveMsgTimestanmp
+  if (elapsedKeepAliveTimer > KEEP_ALIVE_TIMEOUT) {
     process.exit(1)
   }
-}, 5000)
+}, 1000)
 
 io.on('connection', (socket) => {
   //#region SERIAL
+
+  socket.on(SocketEvents.KEEP_ALIVE, () => {
+    keepAliveMsgTimestanmp = performance.now()
+  })
+
   socket.on(SocketEvents.PORTLIST_REQ, async () => {
     console.log("portlist request")
     io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
@@ -212,7 +217,7 @@ export class SerialPortManager {
         for (const port of this.ports) {
           if (port.path == portInfo.path && port.pnpId == portInfo.pnpId) {
 
-            const port = new SerialPort({
+            const newPort = new SerialPort({
               baudRate: config.baudRate || 9600,
               path: portInfo.path,
               dataBits: config.dataBits || 8,
@@ -222,7 +227,7 @@ export class SerialPortManager {
               if (error != null) {
                 resolve({ path: port.path, success: false, msg: error.message })
               } else {
-                this.openPorts.set(config.tagName, port)
+                this.openPorts.set(config.tagName, newPort)
                 console.log(`New port configured: '${config.tagName}' => ${port.path}`)
                 port.isOpen
                   ? resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta aberta com sucesso` })
@@ -291,7 +296,7 @@ export class SerialPortManager {
 
         port.isOpen && port.readable
           ? resolve({ path: port.path, success: true, msg: port.read() })
-          : resolve({ path: port.path, success: true, msg: "porta fechada ou indisponível" })
+          : resolve({ path: port.path, success: false, msg: "porta fechada ou indisponível" })
 
       } else {
         resolve({ path: "Unknown", success: false, msg: "porta nunca foi aberta pelo sistema" })
@@ -304,7 +309,16 @@ export class SerialPortManager {
 
 export class ModbusDeviceManager {
 
+  static MODBUS_RESPONSE_TIMEOUT = 500
   static slaves = new Map()
+
+  static async timeOut(timeout) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ timeout: true })
+      }, timeout)
+    })
+  }
 
   static create(portInfo, config) {
     return new Promise(async (resolve) => {
@@ -317,16 +331,27 @@ export class ModbusDeviceManager {
 
         const slave = new ModbusRTU()
         this.slaves.set(config.tagName, slave)
-
         try {
-          await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate })
+          await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
           resolve({ path: portInfo.path, success: true, msg: "sucesso ao criar slave" })
         } catch (error) {
-          resolve({ path: portInfo.path, success: false, msg: `falha ao criar slave: ${error}` })
+          resolve({ path: portInfo.path, success: false, msg: `falha ao criar slave: ${error.message}` })
         }
       } else {
         const slave = this.slaves.get(config.tagName)
         resolve({ path: slave.path, success: false, msg: `Unknown: porta nunca foi aberta pelo sistema` })
+      }
+    })
+  }
+
+  static close() { //WIP...
+    return new Promise((resolve) => {
+      if (this.slaves.has(config.tagName)) {
+        const slave = this.slaves.get(config.tagName)
+        slave.close(() => {
+          this.slaves.delete(config.tagName)
+          resolve()
+        })
       }
     })
   }
@@ -339,7 +364,7 @@ export class ModbusDeviceManager {
           slave.setID(addr)
           resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao configurar node address: ${addr}`, addr })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao setar node address: ${error}`, addr })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao setar node address: ${error.message}`, addr })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
@@ -352,10 +377,12 @@ export class ModbusDeviceManager {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await slave.readInputRegisters(startAddress, qty)
-          resolve({ path: slave._port._client.path, success: true, msg: result.data })
+          const result = await Promise.race([slave.readInputRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          result.hasOwnProperty("timeout")
+            ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
+            : resolve({ path: slave._port._client.path, success: true, msg: result.data })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: ${error}` })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: ${error.message}` })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
@@ -368,10 +395,12 @@ export class ModbusDeviceManager {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await slave.readHoldingRegisters(startAddress, qty)
-          resolve({ path: slave._port._client.path, success: true, msg: result.data })
+          const result = await Promise.race([slave.readHoldingRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          result.hasOwnProperty("timeout")
+            ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
+            : resolve({ path: slave._port._client.path, success: true, msg: result.data })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: ${error}` })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: ${error.message}` })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
@@ -384,10 +413,12 @@ export class ModbusDeviceManager {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await slave.writeRegister(startAddress, value)
-          resolve({ path: slave._port._client.path, success: true, msg: result })
+          const result = await Promise.race([slave.writeRegister(startAddress, value), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          result.hasOwnProperty("timeout")
+            ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
+            : resolve({ path: slave._port._client.path, success: true, msg: result })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever nos registradores: ${error}` })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever nos registradores: ${error.message}` })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
@@ -400,10 +431,12 @@ export class ModbusDeviceManager {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await slave.writeRegisters(startAddress, arrValues)
-          resolve({ path: slave._port._client.path, success: true, msg: result })
+          const result = await Promise.race([slave.writeRegisters(startAddress, arrValues), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          result.hasOwnProperty("timeout")
+            ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
+            : resolve({ path: slave._port._client.path, success: true, msg: result })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever nos registradores: ${error}` })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever nos registradores: ${error.message}` })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
@@ -419,7 +452,7 @@ export class ModbusDeviceManager {
           const result = await slave.readDeviceIdentification(idCode, objectId)
           resolve({ path: slave._port._client.path, success: true, msg: result })
         } catch (error) {
-          resolve({ path: slave._port._client.path, success: false, msg: `falha ao obter identificação: ${error}` })
+          resolve({ path: slave._port._client.path, success: false, msg: `falha ao obter identificação: ${error.message}` })
         }
       } else {
         resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
