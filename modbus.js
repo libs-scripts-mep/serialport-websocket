@@ -4,9 +4,9 @@ import { SerialReqManager, SerialUtil } from "./serial.js"
 export class Modbus extends SerialReqManager {
     constructor(baudrate, tag, port, parity, policy = "Queue") {
         super(baudrate, tag, port, parity, policy)
+        this.Busy = false
 
         this.NodeAddress = null
-
         this.CreateResult = null
         this.NodeAddressResult = null
 
@@ -30,6 +30,8 @@ export class Modbus extends SerialReqManager {
 
     async create() {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.CREATE_MODBUS_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } })
 
             while (this.CreateResult == null) { await SerialUtil.Delay(10) }
@@ -37,22 +39,28 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.CreateResult)
             this.CreateResult = null
+            this.Busy = false
         })
     }
 
     async setNodeAddress(nodeAddress) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.SET_NODE_ADDRESS_REQ, { nodeAddress, tagName: this.TAG })
 
             while (this.NodeAddressResult == null) { await SerialUtil.Delay(10) }
             Log.console(`MDB ADDR ${this.PORT.path}: ${this.NodeAddressResult.msg}`, this.NodeAddressResult.success ? this.Log.success : this.Log.error)
 
             resolve(this.NodeAddressResult)
+            this.Busy = false
         })
     }
 
     async ReadDeviceIdentification(idCode, objectId) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.READ_DEVICE_ID_REQ, { idCode, objectId, tagName: this.TAG })
             Log.console(`MDB F43 ${this.PORT.path}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
 
@@ -62,11 +70,14 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.ReadDeviceIdentificationResult)
             this.ReadDeviceIdentificationResult = null
+            this.Busy = false
         })
     }
 
     async ReadInputRegisters(startAddress, qty) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.READ_INPUT_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
             Log.console(`MDB F04 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
@@ -76,11 +87,14 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.ReadInputRegistersResult)
             this.ReadInputRegistersResult = null
+            this.Busy = false
         })
     }
 
     async ReadHoldingRegisters(startAddress, qty) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
             Log.console(`MDB F03 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
@@ -90,11 +104,14 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.ReadHoldingRegistersResult)
             this.ReadHoldingRegistersResult = null
+            this.Busy = false
         })
     }
 
     async WriteSingleRegister(startAddress, value) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTER_REQ, { startAddress, value, tagName: this.TAG })
             Log.console(`MDB F06 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
 
@@ -104,19 +121,23 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.WriteSingleRegisterResult)
             this.WriteSingleRegisterResult = null
+            this.Busy = false
         })
     }
 
     async WriteMultipleRegisters(startAddress, arrValues) {
         return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+            this.Busy = true
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTERS_REQ, { startAddress, arrValues, tagName: this.TAG })
-            Log.console(`MDB F16 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => ${arrValues}`, this.Log.req)
+            Log.console(`MDB F16 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
 
             this.WriteMultipleRegistersResult.success ? console.log(this.WriteMultipleRegistersResult.msg) : Log.console(this.WriteMultipleRegistersResult.msg, this.Log.error)
 
             resolve(this.WriteMultipleRegistersResult)
+            this.Busy = false
             this.WriteMultipleRegistersResult = null
         })
     }
