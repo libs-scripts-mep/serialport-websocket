@@ -2,6 +2,7 @@ import Log from "../script-loader/utils-script.js"
 import { RastUtil } from "../rast-pvi/rast-pvi.js"
 import FWLink from "../daq-fwlink/FWLink.js"
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
+import { SerialUtil } from "./serial.js"
 
 export class Socket {
     static IO = io('http://localhost:3000')
@@ -11,7 +12,7 @@ export class Socket {
 
     static Events = {
         //Global socket commands
-        KEEP_ALIVE: "keep-alive",
+        KILL_PROCESS: "kill-process",
         SERVER_ERROR: "server-error",
         PORTLIST_REQ: "port-list-req",
         PORTLIST_RES: "port-list-res",
@@ -62,18 +63,19 @@ export class Socket {
         })
     }
 
-    static keepAlive() {
-        setInterval(() => {
-            Socket.IO.emit(Socket.Events.KEEP_ALIVE)
-        }, 1000)
-    }
+    static killProcess() { Socket.IO.emit(Socket.Events.KILL_PROCESS) }
 
     static {
         window.Socket = Socket
+        window.onbeforeunload = () => { return Socket.killProcess() }
+        window.onkeydown = (e) => { if (e.keyCode == 65 && e.ctrlKey) { window.onbeforeunload = () => { } } }
+        window.onkeydown = (e) => { if ((e.which || e.keyCode) == 116) { window.onbeforeunload = () => { } } }
+
         Socket.startObservers()
-        Socket.keepAlive()
+
         setTimeout(() => {
             if (!Socket.IO.connected) {
+                Log.console("Subindo servidor serialport-websocket", Log.Colors.Purple.MediumPurple)
                 FWLink.runInstructionS("EXEC",
                     [
                         "node",
@@ -83,12 +85,15 @@ export class Socket {
                     ],
                     () => { }
                 )
+            } else {
+                Log.console("Servidor serialport-websocket já está em execução", Log.Colors.Purple.MediumPurple)
             }
-            FWLink.PVIEventObserver.add((message, params) => {
-                if (params[0] != undefined && Socket.DebugMode) {
-                    Log.console(params[0], Log.Colors.Purple.MediumPurple)
-                }
-            }, "PVI.Sniffer.sniffer.exec_return.data")
-        }, 1000)
+        }, 100)
+
+        FWLink.PVIEventObserver.add((message, params) => {
+            if (params[0] != undefined && Socket.DebugMode) {
+                Log.console(params[0], Log.Colors.Purple.MediumPurple)
+            }
+        }, "PVI.Sniffer.sniffer.PID_")
     }
 }

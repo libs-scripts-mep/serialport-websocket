@@ -4,7 +4,7 @@ import { SerialPort } from 'serialport'
 import ModbusRTU from "modbus-serial"
 
 export class SocketEvents {
-  static KEEP_ALIVE = "keep-alive"
+  static KILL_PROCESS = "kill-process"
   static PORTLIST_REQ = "port-list-req"
   static PORTLIST_RES = "port-list-res"
   static OPEN_PORT_REQ = "open-port-req"
@@ -35,32 +35,46 @@ export class SocketEvents {
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
 
-const KEEP_ALIVE_TIMEOUT = 10000
-let keepAliveMsgTimestanmp = performance.now()
+/**
+ * 
+ * @param {Object} obj 
+ * @param {String} prop 
+ * @param {String} expectedType 
+ * @returns 
+ */
+function evalProps(obj, propName, expectedType) {
+  if (!obj.hasOwnProperty(propName)) { return { success: false, msg: `Propriedade ${propName} não informada no objeto passado` } }
+  if (obj[propName] == null || obj[propName] == undefined) { return { success: false, msg: `Propriedade ${propName} possui valor inválido: ${obj[propName]}` } }
 
-setInterval(() => {
-  const elapsedKeepAliveTimer = performance.now() - keepAliveMsgTimestanmp
-  if (elapsedKeepAliveTimer > KEEP_ALIVE_TIMEOUT) {
-    process.exit(1)
-  }
-}, 1000)
+  const prop = obj[propName]
+  const propType = typeof prop
+
+  if (propType != expectedType) { return { success: false, msg: `Propriedade ${propName} é do tipo ${propType}. Precisa ser do tipo: ${expectedType}` } }
+  return { success: true, msg: `Propriedade ${propName} validada com sucesso` }
+}
 
 io.on('connection', (socket) => {
-  //#region SERIAL
 
-  socket.on(SocketEvents.KEEP_ALIVE, () => {
-    keepAliveMsgTimestanmp = performance.now()
+  //#region GLOBAL
+  socket.on(SocketEvents.KILL_PROCESS, () => {
+    process.exit(1)
   })
 
   socket.on(SocketEvents.PORTLIST_REQ, async () => {
     console.log("portlist request")
     io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
   })
+  //#endregion GLOBAL
 
+  //#region SERIAL
   socket.on(SocketEvents.OPEN_PORT_REQ, async (obj) => {
     console.log("open request", obj)
-    if (obj.portInfo == undefined || obj.portInfo == null || obj.config == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\nportInfo: ${obj.portInfo}\nconfig: ${obj.config}`)
+
+    const evalPortInfo = evalProps(obj, 'portInfo', 'object')
+    const evalConfig = evalProps(obj, 'config', 'object')
+
+    if (!evalPortInfo.success || !evalConfig.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalPortInfo.msg}\n${evalConfig.msg}`)
     } else {
       io.emit(SocketEvents.OPEN_PORT_RES, await SerialPortManager.open(obj.portInfo, obj.config))
     }
@@ -77,8 +91,14 @@ io.on('connection', (socket) => {
 
   socket.on(SocketEvents.WRITE_TO_REQ, async (obj) => {
     console.log("write request", obj)
-    if (obj.tagName == undefined || obj.message == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\ntagName: ${obj.tagName}\nmessage: ${obj.message}`)
+
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalMessage = evalProps(obj, 'message', 'object')
+    const evalContentAsArray = evalProps(obj.message, 'content', 'object')
+    const evalContentAsString = evalProps(obj.message, 'content', 'string')
+
+    if (!evalTagName.success || !evalMessage.success || (!evalContentAsString.success && !evalContentAsArray.success)) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}\n${evalMessage.msg}\n${evalContentAsString.msg}`)
     } else {
       io.emit(SocketEvents.WRITE_TO_RES, await SerialPortManager.write(obj.tagName, obj.message))
     }
@@ -86,8 +106,11 @@ io.on('connection', (socket) => {
 
   socket.on(SocketEvents.READ_FROM_REQ, async (obj) => {
     console.log("read request", obj)
-    if (obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\ntagName: ${obj.tagName}`)
+
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+
+    if (!evalTagName.success) {
+      io.emit(SocketEvents.SERVER_ERROR, evalTagName.msg)
     } else {
       io.emit(SocketEvents.READ_FROM_RES, await SerialPortManager.read(obj.tagName, obj.encoding))
     }
@@ -98,62 +121,95 @@ io.on('connection', (socket) => {
 
   socket.on(SocketEvents.CREATE_MODBUS_REQ, async (obj) => {
     console.log("create mbd slave request", obj)
-    if (obj.portInfo == undefined || obj.portInfo == null || obj.config == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\nportInfo: ${obj.portInfo}\nconfig: ${obj.config}`)
+
+    const evalPortInfo = evalProps(obj, 'portInfo', 'object')
+    const evalConfig = evalProps(obj, 'config', 'object')
+
+    if (!evalPortInfo.success || !evalConfig.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalPortInfo.msg}\n${evalConfig.msg}`)
     } else {
       io.emit(SocketEvents.CREATE_MODBUS_RES, await ModbusDeviceManager.create(obj.portInfo, obj.config))
     }
   })
 
   socket.on(SocketEvents.SET_NODE_ADDRESS_REQ, async (obj) => {
-    console.log("set mdb node address", obj.nodeAddress, obj.tagName)
-    if (isNaN(obj.nodeAddress) || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.nodeAddress}\ntagName: ${obj.tagName}`)
+    console.log("set mdb node address", obj)
+
+    const evalNodeAddress = evalProps(obj, 'portInfo', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+
+    if (!evalNodeAddress.success || !evalTagName.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalNodeAddress.msg}\n${evalTagName.msg}`)
     } else {
       io.emit(SocketEvents.SET_NODE_ADDRESS_RES, await ModbusDeviceManager.setNodeAddress(obj.nodeAddress, obj.tagName))
     }
   })
 
   socket.on(SocketEvents.READ_INPUT_REGISTERS_REQ, async (obj) => {
-    console.log("read input regs", obj.startAddress, obj.qty, obj.tagName)
-    if (isNaN(obj.startAddress) || isNaN(obj.qty) || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.startAddress}\nquantity: ${obj.qty}\ntagName: ${obj.tagName}`)
+    console.log("read input regs", obj)
+
+    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalQty = evalProps(obj, 'qty', 'number')
+
+    if (!evalStartAddress.success || !evalTagName.success || !evalQty.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalQty.msg}`)
     } else {
       io.emit(SocketEvents.READ_INPUT_REGISTERS_RES, await ModbusDeviceManager.readInputRegisters(obj.tagName, obj.startAddress, obj.qty))
     }
   })
 
   socket.on(SocketEvents.READ_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("read holding regs", obj.startAddress, obj.qty, obj.tagName)
-    if (isNaN(obj.startAddress) || isNaN(obj.qty) || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.startAddress}\nquantity: ${obj.qty}\ntagName: ${obj.tagName}`)
+    console.log("read holding regs", obj)
+
+    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalQty = evalProps(obj, 'qty', 'number')
+
+    if (!evalStartAddress.success || !evalTagName.success || !evalQty.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalQty.msg}`)
     } else {
       io.emit(SocketEvents.READ_HOLDING_REGISTERS_RES, await ModbusDeviceManager.readHoldingRegisters(obj.tagName, obj.startAddress, obj.qty))
     }
   })
 
   socket.on(SocketEvents.WRTIE_HOLDING_REGISTER_REQ, async (obj) => {
-    console.log("write reg", obj.startAddress, obj.value, obj.tagName)
-    if (isNaN(obj.startAddress) || isNaN(obj.value) || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.startAddress}\nvalue: ${obj.value}\ntagName: ${obj.tagName}`)
+    console.log("write reg", obj)
+
+    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalValue = evalProps(obj, 'value', 'number')
+
+    if (!evalStartAddress.success || !evalTagName.success || !evalValue.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalValue.msg}`)
     } else {
       io.emit(SocketEvents.WRTIE_HOLDING_REGISTER_RES, await ModbusDeviceManager.writeHoldingRegister(obj.tagName, obj.startAddress, obj.value))
     }
   })
 
   socket.on(SocketEvents.WRTIE_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("write regs", obj.startAddress, obj.arrValues, obj.tagName)
-    if (isNaN(obj.startAddress) || !typeof obj.arrValues == Object || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\naddr: ${obj.startAddress}\narrValues: ${obj.arrValues}\ntagName: ${obj.tagName}`)
+    console.log("write regs", obj)
+
+    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalValues = evalProps(obj, 'arrValues', 'object')
+
+    if (!evalStartAddress.success || !evalTagName.success || !evalValues.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalValues.msg}`)
     } else {
       io.emit(SocketEvents.WRTIE_HOLDING_REGISTERS_RES, await ModbusDeviceManager.writeHoldingRegisters(obj.tagName, obj.startAddress, obj.arrValues))
     }
   })
 
   socket.on(SocketEvents.READ_DEVICE_ID_REQ, async (obj) => {
-    console.log("read device id", obj.idCode, obj.objectId, obj.tagName)
-    if (isNaN(obj.idCode) || isNaN(obj.objectId) || obj.tagName == null || obj.tagName == undefined) {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incompletos:\nidCode: ${obj.idCode}\nobjectId: ${obj.objectId}\ntagName: ${obj.tagName}`)
+    console.log("read device id", obj)
+
+    const evalIdCode = evalProps(obj, 'idCode', 'number')
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+    const evalObjectId = evalProps(obj, 'objectId', 'number')
+
+    if (!evalIdCode.success || !evalTagName.success || !evalObjectId.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalIdCode.msg}\n${evalTagName.msg}\n${evalObjectId.msg}`)
     } else {
       io.emit(SocketEvents.READ_DEVICE_ID_RES, await ModbusDeviceManager.readDeviceID(obj.tagName, obj.idCode, obj.objectId))
     }
