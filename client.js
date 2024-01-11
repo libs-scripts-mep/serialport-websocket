@@ -5,10 +5,14 @@ import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
 import { SerialUtil } from "./serial.js"
 
 export class Socket {
-    static IO = io('http://localhost:3000')
+    static ServerPort = 3000
+    static IO = io(`http://localhost:${this.ServerPort}`)
     static Error = null
     static PortList = null
+    static Slaves = null
+    static OpenPorts = null
     static DebugMode = false
+    static CriticalErrors = ["Writing to COM port (GetOverlappedResult): Unknown error code 31"]
 
     static Events = {
         //Global socket commands
@@ -16,6 +20,8 @@ export class Socket {
         SERVER_ERROR: "server-error",
         PORTLIST_REQ: "port-list-req",
         PORTLIST_RES: "port-list-res",
+        OPENPORTS_REQ: "get-openports-req",
+        OPENPORTS_RES: "get-openports-res",
         //Commom serial commands
         OPEN_PORT_REQ: "open-port-req",
         OPEN_PORT_RES: "open-port-res",
@@ -42,8 +48,9 @@ export class Socket {
         WRTIE_HOLDING_REGISTERS_RES: "write-mdb-holding-regs-res",
     }
 
-    static startObservers() {
+    static async startObservers() {
         Socket.IO.on(Socket.Events.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
+        Socket.IO.on(Socket.Events.OPENPORTS_RES, (openPorts) => { console.log(openPorts); Socket.OpenPorts = openPorts })
         Socket.IO.on(Socket.Events.SERVER_ERROR, (error) => { console.error(error); Socket.Error = error })
 
         Socket.IO.on(Socket.Events.OPEN_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
@@ -63,6 +70,43 @@ export class Socket {
         })
     }
 
+    static getOpenPorts() {
+        return new Promise(async (resolve) => {
+            Socket.IO.emit(Socket.Events.OPENPORTS_REQ)
+
+            while (this.OpenPorts == null) { await SerialUtil.Delay(10) }
+
+            resolve(this.OpenPorts)
+            this.OpenPorts = null
+        })
+    }
+
+    static isCriticalError(error) {
+        for (const critErr of this.CriticalErrors) {
+            if (critErr == error) { return true }
+        }
+        return false
+    }
+
+    static startProcess() {
+        setTimeout(() => {
+            if (!Socket.IO.connected) {
+                Log.console(`Subindo servidor serialport-websocket na porta ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+                FWLink.runInstructionS("EXEC",
+                    [
+                        "node",
+                        `${RastUtil.getScriptPath()}/node_modules/@libs-scripts-mep/serialport-websocket/server.js ${Socket.ServerPort}`,
+                        "true",
+                        "true"
+                    ],
+                    () => { }
+                )
+            } else {
+                Log.console(`Servidor serialport-websocket já está em execução na porta ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+            }
+        }, 1000)
+    }
+
     static killProcess() { Socket.IO.emit(Socket.Events.KILL_PROCESS) }
 
     static {
@@ -72,27 +116,11 @@ export class Socket {
         window.onkeydown = (e) => { if ((e.which || e.keyCode) == 116) { window.onbeforeunload = () => { } } }
 
         Socket.startObservers()
-
-        setTimeout(() => {
-            if (!Socket.IO.connected) {
-                Log.console("Subindo servidor serialport-websocket", Log.Colors.Purple.MediumPurple)
-                FWLink.runInstructionS("EXEC",
-                    [
-                        "node",
-                        `${RastUtil.getScriptPath()}/node_modules/@libs-scripts-mep/serialport-websocket/server.js`,
-                        "true",
-                        "true"
-                    ],
-                    () => { }
-                )
-            } else {
-                Log.console("Servidor serialport-websocket já está em execução", Log.Colors.Purple.MediumPurple)
-            }
-        }, 100)
+        Socket.startProcess()
 
         FWLink.PVIEventObserver.add((message, params) => {
             if (params[0] != undefined && Socket.DebugMode) {
-                Log.console(params[0], Log.Colors.Purple.MediumPurple)
+                Log.console(`${message} ${params[0]}`, Log.Colors.Purple.MediumPurple)
             }
         }, "PVI.Sniffer.sniffer.PID_")
     }

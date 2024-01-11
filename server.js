@@ -7,6 +7,8 @@ export class SocketEvents {
   static KILL_PROCESS = "kill-process"
   static PORTLIST_REQ = "port-list-req"
   static PORTLIST_RES = "port-list-res"
+  static OPENPORTS_REQ = "get-openports-req"
+  static OPENPORTS_RES = "get-openports-res"
   static OPEN_PORT_REQ = "open-port-req"
   static OPEN_PORT_RES = "open-port-res"
   static CLOSE_PORT_REQ = "close-port-req"
@@ -32,6 +34,7 @@ export class SocketEvents {
   static WRTIE_HOLDING_REGISTERS_RES = "write-mdb-holding-regs-res"
 }
 
+const port = 3000
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
 
@@ -43,7 +46,7 @@ const io = new Server(http, { cors: { origin: "*" } })
  * @returns 
  */
 function evalProps(obj, propName, expectedType) {
-  if (!obj.hasOwnProperty(propName)) { return { success: false, msg: `Propriedade ${propName} não informada no objeto passado` } }
+  if (!propName in obj) { return { success: false, msg: `Propriedade ${propName} não informada no objeto passado` } }
   if (obj[propName] == null || obj[propName] == undefined) { return { success: false, msg: `Propriedade ${propName} possui valor inválido: ${obj[propName]}` } }
 
   const prop = obj[propName]
@@ -53,16 +56,23 @@ function evalProps(obj, propName, expectedType) {
   return { success: true, msg: `Propriedade ${propName} validada com sucesso` }
 }
 
+function mapToObject(map) { return Object.fromEntries(map.entries()) }
+
 io.on('connection', (socket) => {
 
   //#region GLOBAL
   socket.on(SocketEvents.KILL_PROCESS, () => {
-    process.exit(1)
+    process.exit(10)
   })
 
   socket.on(SocketEvents.PORTLIST_REQ, async () => {
     console.log("portlist request")
     io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
+  })
+
+  socket.on(SocketEvents.OPENPORTS_REQ, async () => {
+    console.log("openports request")
+    io.emit(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
   })
   //#endregion GLOBAL
 
@@ -135,7 +145,7 @@ io.on('connection', (socket) => {
   socket.on(SocketEvents.SET_NODE_ADDRESS_REQ, async (obj) => {
     console.log("set mdb node address", obj)
 
-    const evalNodeAddress = evalProps(obj, 'portInfo', 'number')
+    const evalNodeAddress = evalProps(obj, 'nodeAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
 
     if (!evalNodeAddress.success || !evalTagName.success) {
@@ -217,7 +227,7 @@ io.on('connection', (socket) => {
   //#endregion MODBUS
 })
 
-http.listen(3000, () => { console.log('Serial WebSocket executando em http://localhost:3000') })
+http.listen(port, () => { console.log(`Serial WebSocket executando em http://localhost:${port}`) })
 
 export class SerialPortManager {
 
@@ -389,13 +399,13 @@ export class ModbusDeviceManager {
         this.slaves.set(config.tagName, slave)
         try {
           await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
-          resolve({ path: portInfo.path, success: true, msg: "sucesso ao criar slave" })
+          resolve({ path: slave._port._client.path, success: true, msg: "sucesso ao criar slave" })
         } catch (error) {
           resolve({ path: portInfo.path, success: false, msg: `falha ao criar slave: ${error.message}` })
         }
       } else {
         const slave = this.slaves.get(config.tagName)
-        resolve({ path: slave.path, success: false, msg: `Unknown: porta nunca foi aberta pelo sistema` })
+        resolve({ path: slave._port._client.path, success: true, msg: `slave previamente criado` })
       }
     })
   }
@@ -434,7 +444,7 @@ export class ModbusDeviceManager {
         const slave = this.slaves.get(tagName)
         try {
           const result = await Promise.race([slave.readInputRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
-          result.hasOwnProperty("timeout")
+          "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result.data })
         } catch (error) {
@@ -452,7 +462,7 @@ export class ModbusDeviceManager {
         const slave = this.slaves.get(tagName)
         try {
           const result = await Promise.race([slave.readHoldingRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
-          result.hasOwnProperty("timeout")
+          "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result.data })
         } catch (error) {
@@ -470,7 +480,7 @@ export class ModbusDeviceManager {
         const slave = this.slaves.get(tagName)
         try {
           const result = await Promise.race([slave.writeRegister(startAddress, value), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
-          result.hasOwnProperty("timeout")
+          "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result })
         } catch (error) {
@@ -488,7 +498,7 @@ export class ModbusDeviceManager {
         const slave = this.slaves.get(tagName)
         try {
           const result = await Promise.race([slave.writeRegisters(startAddress, arrValues), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
-          result.hasOwnProperty("timeout")
+          "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result })
         } catch (error) {

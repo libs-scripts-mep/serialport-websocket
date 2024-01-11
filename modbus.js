@@ -88,7 +88,7 @@ export class Modbus extends SerialReqManager {
             Socket.IO.emit(Socket.Events.SET_NODE_ADDRESS_REQ, { nodeAddress, tagName: this.TAG })
 
             while (this.NodeAddressResult == null) { await SerialUtil.Delay(10) }
-            Log.console(`MDB ADDR ${this.PORT.path}: ${this.NodeAddressResult.msg}`, this.NodeAddressResult.success ? this.Log.success : this.Log.error)
+            Log.console(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.NodeAddressResult.success ? this.Log.success : this.Log.error)
 
             resolve(this.NodeAddressResult)
 
@@ -110,7 +110,7 @@ export class Modbus extends SerialReqManager {
             this.Busy = true
 
             Socket.IO.emit(Socket.Events.READ_DEVICE_ID_REQ, { idCode, objectId, tagName: this.TAG })
-            Log.console(`MDB F43 ${this.PORT.path}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
+            Log.console(`MDB F43 ${this.PORT.path} ${this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
 
             while (this.ReadDeviceIdentificationResult == null) { await SerialUtil.Delay(10) }
 
@@ -153,7 +153,7 @@ export class Modbus extends SerialReqManager {
             this.Busy = true
 
             Socket.IO.emit(Socket.Events.READ_INPUT_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F04 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F04 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
 
@@ -203,7 +203,7 @@ export class Modbus extends SerialReqManager {
             this.Busy = true
 
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F03 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F03 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
 
@@ -254,7 +254,7 @@ export class Modbus extends SerialReqManager {
             this.Busy = true
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTER_REQ, { startAddress, value, tagName: this.TAG })
-            Log.console(`MDB F06 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
+            Log.console(`MDB F06 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
 
             while (this.WriteSingleRegisterResult == null) { await SerialUtil.Delay(10) }
 
@@ -303,7 +303,7 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
             this.Busy = true
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTERS_REQ, { startAddress, arrValues, tagName: this.TAG })
-            Log.console(`MDB F16 ${this.PORT.path}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
+            Log.console(`MDB F16 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
 

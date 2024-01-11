@@ -60,6 +60,9 @@ export class Serial {
     /**Atualiza as informações da porta serial desta instância */
     setPort(port) { this.PORT = port }
 
+    /**Atualiza as informações da porta serial desta instância */
+    removePort() { this.PORT = null }
+
     /**
      * # Exemplos
      * 
@@ -78,7 +81,9 @@ export class Serial {
         return new Promise(async (resolve) => {
             Socket.IO.emit(Socket.Events.CLOSE_PORT_REQ, this.TAG)
 
+            const timeout = setTimeout(() => { this.CloseResult = { success: false, path: this.PORT.path, msg: `Closing ${this.PORT.path}: Falha ao fechar porta (timeout)` } }, 200)
             while (this.CloseResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
             Log.console(this.CloseResult.msg, this.CloseResult.success ? this.Log.success : this.Log.error)
 
             resolve(this.CloseResult)
@@ -104,8 +109,11 @@ export class Serial {
         return new Promise(async (resolve) => {
             Socket.IO.emit(Socket.Events.OPEN_PORT_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, tagName: this.TAG, parity: this.PARITY } })
 
+            const timeout = setTimeout(() => { this.OpenResult = { success: false, path: this.PORT.path, msg: `Openning ${this.PORT.path}: Falha ao abrir porta (timeout)` } }, 200)
+
             while (this.OpenResult == null) { await SerialUtil.Delay(10) }
-            Log.console(this.OpenResult.msg, this.OpenResult.success ? this.Log.success : this.Log.error)
+            clearTimeout(timeout)
+            Log.console(`${this.TAG} ${this.OpenResult.msg}`, this.OpenResult.success ? this.Log.success : this.Log.error)
 
             resolve(this.OpenResult)
             this.OpenResult = null
@@ -142,9 +150,12 @@ export class Serial {
 
             Socket.IO.emit(Socket.Events.READ_FROM_REQ, { tagName: this.TAG, encoding })
 
+            const ReadTimeout = setTimeout(() => { this.ReadResult = { success: false, path: this.PORT.path, msg: `Reading ${this.PORT.path} ${this.TAG}: Falha ao realizar leitura (timeout)` } }, 200)
+
             while (this.ReadResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(ReadTimeout)
             this.ReadResult.msg == null ? null : this.ReadResult.msg = this.ReadResult.msg.toUpperCase()
-            Log.console(`R ${this.ReadResult.path}: ${this.ReadResult.msg}`, this.ReadResult.success ? this.Log.res : this.Log.error)
+            Log.console(`R ${this.ReadResult.path} ${this.TAG}: ${this.ReadResult.msg}`, this.ReadResult.success ? this.Log.res : this.Log.error)
 
             resolve(this.ReadResult)
             this.ReadResult = null
@@ -193,8 +204,15 @@ export class Serial {
             if (this.PORT != null) {
                 Socket.IO.emit(Socket.Events.WRITE_TO_REQ, { tagName: this.TAG, message: { content, encoding } })
 
+                const timeout = setTimeout(() => { this.WriteResult = { success: false, path: this.PORT.path, msg: `Writing ${this.PORT.path} ${this.TAG}: Falha ao realizar escrita (timeout)` } }, 200)
+
                 while (this.WriteResult == null) { await SerialUtil.Delay(10) }
-                Log.console(`W ${this.WriteResult.path}: ${this.WriteResult.msg}`, this.WriteResult.success ? this.Log.req : this.Log.error)
+                Log.console(`W ${this.WriteResult.path} ${this.TAG}: ${this.WriteResult.msg}`, this.WriteResult.success ? this.Log.req : this.Log.error)
+                clearTimeout(timeout)
+
+                if (!this.WriteResult.success && Socket.isCriticalError(this.WriteResult.msg)) {
+                    alert("ERRO CRITICO\n\nReinicie todos os dispositivos USB do computador")
+                }
 
                 resolve(this.WriteResult)
                 this.WriteResult = null
@@ -298,7 +316,7 @@ export class SerialReqManager extends Serial {
     }
 
     async Manager() {
-        while (true) {
+        setInterval(async () => {
             if (this.hasReqToSend() && this.Processing) {
 
                 const nextReq = this.GetReq()
@@ -310,8 +328,7 @@ export class SerialReqManager extends Serial {
 
                 this.ResBuffer.push(nextReq)
             }
-            await SerialUtil.Delay(this.ManagerInterval)
-        }
+        }, this.ManagerInterval)
     }
 
     hasReqToSend() {
@@ -440,46 +457,68 @@ export class SerialReqManager extends Serial {
      * ## Result
      * 
      * ```js
-     * {success: Boolean, port: String}
+     * {success: Boolean, port: String, msg: String}
      * ```
      */
     async portDiscover(reqInfo, filter) {
+        return new Promise(async (resolve) => {
 
-        const portList = await Socket.getPortList()
-        const filteredProps = SerialUtil.filterByProps(portList, filter)
-        filteredProps.length == 0 ? filteredProps[0] = portList : null
+            const portList = await Socket.getPortList()
+            const openPorts = await Socket.getOpenPorts()
+            const isOpenOnServer = this.TAG in openPorts
 
-        if (filteredProps.length > 0) {
+            if (!isOpenOnServer) {
 
-            for (const filteredPortList of filteredProps) {
-                for (const port of filteredPortList) {
+                const filteredProps = SerialUtil.filterByProps(portList, filter)
+                filteredProps.length == 0 ? filteredProps[0] = portList : null
 
-                    this.setPort(port)
-                    reqInfo.tryNumber = 1
+                if (filteredProps.length > 0) {
 
-                    const openResult = await this.open()
-                    if (openResult.success) {
+                    for (const filteredPortList of filteredProps) {
+                        for (const port of filteredPortList) {
 
-                        const result = await this.WatchForResponse(reqInfo)
+                            this.setPort(port)
+                            reqInfo.tryNumber = 1
 
-                        if (result.success) { return { success: true, port: this.PORT, msg: "Sucesso ao descobrir porta serial" } }
-                        else { await this.close() }
+                            const openResult = await this.open()
+                            if (openResult.success) {
+
+                                const result = await this.WatchForResponse(reqInfo)
+
+                                if (result.success) {
+                                    resolve({ success: true, port: this.PORT, msg: `Sucesso ao descobrir porta serial para ${this.TAG}` })
+                                    return
+                                }
+                                else {
+                                    await this.close()
+                                    this.removePort(port)
+                                }
+
+                            } else {
+                                this.removePort(port)
+                            }
+                            await SerialUtil.Delay(20)
+                        }
                     }
-                    await SerialUtil.Delay(20)
+                    resolve({ success: false, port: this.PORT, msg: "Nenhuma porta serial respondeu à requisição" })
+
+                } else {
+                    resolve({ success: false, port: this.PORT, msg: "Não há nenhuma porta serial para se conectar" })
+                }
+            } else {
+                const path = openPorts[this.TAG].settings.path
+                const portInfo = SerialUtil.filterByProps(portList, { path })
+
+                if (portInfo.length == 0) {
+                    resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
+                } else {
+                    this.PORT = portInfo[0][0]
+                    resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
                 }
             }
-
-            this.setPort(null)
-            return { success: false, port: this.PORT, msg: "Nenhuma porta serial respondeu à requisição" }
-
-        } else {
-            this.setPort(null)
-            return { success: false, port: this.PORT, msg: "Não há nenhuma porta serial para se conectar" }
-        }
+        })
     }
 }
-
-window.SerialReqManager = SerialReqManager
 
 export class SerialUtil {
 
