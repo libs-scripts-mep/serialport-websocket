@@ -513,7 +513,8 @@ export class SerialReqManager extends Serial {
                     resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
                 } else {
                     this.PORT = portInfo[0][0]
-                    resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
+                    const openResult = await this.open()
+                    resolve({ success: openResult.success, port: this.PORT, msg: openResult.success ? "Porta previamente configurada no server" : openResult.msg })
                 }
             }
         })
