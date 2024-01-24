@@ -53,7 +53,10 @@ export class Modbus extends SerialReqManager {
             Socket.IO.emit(Socket.Events.CREATE_MODBUS_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } })
 
             while (this.CreateResult == null) { await SerialUtil.Delay(10) }
-            Log.console(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.CreateResult.success ? this.Log.success : this.Log.error)
+
+            this.CreateResult.success
+                ? Log.console(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.Log.error)
 
             resolve(this.CreateResult)
 
@@ -88,7 +91,10 @@ export class Modbus extends SerialReqManager {
             Socket.IO.emit(Socket.Events.SET_NODE_ADDRESS_REQ, { nodeAddress, tagName: this.TAG })
 
             while (this.NodeAddressResult == null) { await SerialUtil.Delay(10) }
-            Log.console(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.NodeAddressResult.success ? this.Log.success : this.Log.error)
+
+            this.NodeAddressResult.success
+                ? Log.console(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.error)
 
             resolve(this.NodeAddressResult)
 
@@ -114,7 +120,9 @@ export class Modbus extends SerialReqManager {
 
             while (this.ReadDeviceIdentificationResult == null) { await SerialUtil.Delay(10) }
 
-            this.ReadDeviceIdentificationResult.success ? console.log(this.ReadDeviceIdentificationResult.msg) : Log.console(this.ReadDeviceIdentificationResult.msg, this.Log.error)
+            this.ReadDeviceIdentificationResult.success
+                ? console.log(this.ReadDeviceIdentificationResult.msg)
+                : console.error(this.ReadDeviceIdentificationResult.msg)
 
             resolve(this.ReadDeviceIdentificationResult)
 
@@ -157,7 +165,9 @@ export class Modbus extends SerialReqManager {
 
             while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
 
-            this.ReadInputRegistersResult.success ? console.log(this.ReadInputRegistersResult.msg) : Log.console(this.ReadInputRegistersResult.msg, this.Log.error)
+            this.ReadInputRegistersResult.success
+                ? console.log(this.ReadInputRegistersResult.msg)
+                : console.error(this.ReadInputRegistersResult.msg)
 
             if (this.ReadInputRegistersResult.success) { resolve(this.ReadInputRegistersResult) }
 
@@ -207,7 +217,9 @@ export class Modbus extends SerialReqManager {
 
             while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
 
-            this.ReadHoldingRegistersResult.success ? console.log(this.ReadHoldingRegistersResult.msg) : Log.console(this.ReadHoldingRegistersResult.msg, this.Log.error)
+            this.ReadHoldingRegistersResult.success
+                ? console.log(this.ReadHoldingRegistersResult.msg)
+                : console.error(this.ReadHoldingRegistersResult.msg)
 
             if (this.ReadHoldingRegistersResult.success) { resolve(this.ReadHoldingRegistersResult) }
 
@@ -258,7 +270,9 @@ export class Modbus extends SerialReqManager {
 
             while (this.WriteSingleRegisterResult == null) { await SerialUtil.Delay(10) }
 
-            this.WriteSingleRegisterResult.success ? console.log(this.WriteSingleRegisterResult.msg) : Log.console(this.WriteSingleRegisterResult.msg, this.Log.error)
+            this.WriteSingleRegisterResult.success
+                ? console.log(this.WriteSingleRegisterResult.msg)
+                : console.error(this.WriteSingleRegisterResult.msg)
 
             if (this.WriteSingleRegisterResult.success) { resolve(this.WriteSingleRegisterResult) }
 
@@ -307,7 +321,9 @@ export class Modbus extends SerialReqManager {
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
 
-            this.WriteMultipleRegistersResult.success ? console.log(this.WriteMultipleRegistersResult.msg) : Log.console(this.WriteMultipleRegistersResult.msg, this.Log.error)
+            this.WriteMultipleRegistersResult.success
+                ? console.log(this.WriteMultipleRegistersResult.msg)
+                : console.error(this.WriteMultipleRegistersResult.msg)
 
             if (this.WriteMultipleRegistersResult.success) { resolve(this.WriteMultipleRegistersResult) }
 

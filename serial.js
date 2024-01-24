@@ -509,12 +509,11 @@ export class SerialReqManager extends Serial {
                 const path = openPorts[this.TAG].settings.path
                 const portInfo = SerialUtil.filterByProps(portList, { path })
 
-                if (portInfo.length == 0) {
+                if (portInfo[0].length == 0) {
                     resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
                 } else {
                     this.PORT = portInfo[0][0]
-                    const openResult = await this.open()
-                    resolve({ success: openResult.success, port: this.PORT, msg: openResult.success ? "Porta previamente configurada no server" : openResult.msg })
+                    resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
                 }
             }
         })
