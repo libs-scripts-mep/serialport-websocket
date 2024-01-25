@@ -375,7 +375,7 @@ export class SerialPortManager {
 
 export class ModbusDeviceManager {
 
-  static MODBUS_RESPONSE_TIMEOUT = 500
+  static MODBUS_RESPONSE_TIMEOUT = 200
   static slaves = new Map()
 
   static async timeOut(timeout) {

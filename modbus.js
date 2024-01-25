@@ -18,7 +18,7 @@ export class Modbus extends SerialReqManager {
         this.startSocketCallbacksMDB()
     }
 
-    static RESPONSE_TIMEOUT = 200
+    static RESPONSE_TIMEOUT = 300
 
     startSocketCallbacksMDB() {
         Socket.IO.on(Socket.Events.CREATE_MODBUS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CreateResult = res } } })
