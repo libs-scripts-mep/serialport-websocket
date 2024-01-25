@@ -14,6 +14,7 @@ export class Socket {
     static DebugMode = false
     static CriticalErrors = ["Writing to COM port (GetOverlappedResult): Unknown error code 31"]
 
+    static RESPONSE_TIMEOUT = 500
     static Events = {
         //Global socket commands
         KILL_PROCESS: "kill-process",
@@ -63,7 +64,9 @@ export class Socket {
         return new Promise(async (resolve) => {
             Socket.IO.emit(Socket.Events.PORTLIST_REQ)
 
+            const timeout = setTimeout(() => { this.PortList = [] }, Socket.RESPONSE_TIMEOUT)
             while (this.PortList == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             resolve(this.PortList)
             this.PortList = null
@@ -74,7 +77,9 @@ export class Socket {
         return new Promise(async (resolve) => {
             Socket.IO.emit(Socket.Events.OPENPORTS_REQ)
 
+            const timeout = setTimeout(() => { this.OpenPorts = {} }, Socket.RESPONSE_TIMEOUT)
             while (this.OpenPorts == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             resolve(this.OpenPorts)
             this.OpenPorts = null

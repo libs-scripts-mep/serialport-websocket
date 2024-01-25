@@ -82,6 +82,7 @@ export class Serial {
             Socket.IO.emit(Socket.Events.CLOSE_PORT_REQ, this.TAG)
 
             const timeout = setTimeout(() => { this.CloseResult = { success: false, path: this.PORT.path, msg: `Closing ${this.PORT.path}: Falha ao fechar porta (timeout)` } }, 200)
+            
             while (this.CloseResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
             Log.console(this.CloseResult.msg, this.CloseResult.success ? this.Log.success : this.Log.error)

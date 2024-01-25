@@ -18,6 +18,8 @@ export class Modbus extends SerialReqManager {
         this.startSocketCallbacksMDB()
     }
 
+    static RESPONSE_TIMEOUT = 200
+
     startSocketCallbacksMDB() {
         Socket.IO.on(Socket.Events.CREATE_MODBUS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CreateResult = res } } })
         Socket.IO.on(Socket.Events.SET_NODE_ADDRESS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.NodeAddressResult = res; this.NodeAddress = res.addr } } })
@@ -49,10 +51,12 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.CreateResult = { success: false, msg: `${this.TAG}: Falha ao criar slave (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.CREATE_MODBUS_REQ, { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } })
 
             while (this.CreateResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.CreateResult.success
                 ? Log.console(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.Log.success)
@@ -87,10 +91,12 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.NodeAddressResult = { success: false, msg: `${this.TAG}: Falha ao atribuir endereço (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.SET_NODE_ADDRESS_REQ, { nodeAddress, tagName: this.TAG })
 
             while (this.NodeAddressResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.NodeAddressResult.success
                 ? Log.console(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.success)
@@ -98,6 +104,7 @@ export class Modbus extends SerialReqManager {
 
             resolve(this.NodeAddressResult)
 
+            this.NodeAddressResult = null
             this.Busy = false
         })
     }
@@ -114,11 +121,13 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.ReadDeviceIdentificationResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_DEVICE_ID_REQ, { idCode, objectId, tagName: this.TAG })
             Log.console(`MDB F43 ${this.PORT.path} ${this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
 
             while (this.ReadDeviceIdentificationResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.ReadDeviceIdentificationResult.success
                 ? console.log(this.ReadDeviceIdentificationResult.msg)
@@ -159,11 +168,13 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.ReadInputRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_INPUT_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
             Log.console(`MDB F04 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.ReadInputRegistersResult.success
                 ? console.log(this.ReadInputRegistersResult.msg)
@@ -211,11 +222,13 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.ReadHoldingRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
             Log.console(`MDB F03 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.ReadHoldingRegistersResult.success
                 ? console.log(this.ReadHoldingRegistersResult.msg)
@@ -264,11 +277,13 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
+            const timeout = setTimeout(() => { this.WriteSingleRegisterResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTER_REQ, { startAddress, value, tagName: this.TAG })
             Log.console(`MDB F06 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
 
             while (this.WriteSingleRegisterResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.WriteSingleRegisterResult.success
                 ? console.log(this.WriteSingleRegisterResult.msg)
@@ -315,11 +330,15 @@ export class Modbus extends SerialReqManager {
     async WriteMultipleRegisters(startAddress, arrValues, tryNumber = 1, maxTries = 3) {
         return new Promise(async (resolve) => {
             while (this.Busy) { await SerialUtil.Delay(10) }
+
             this.Busy = true
+            const timeout = setTimeout(() => { this.WriteMultipleRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTERS_REQ, { startAddress, arrValues, tagName: this.TAG })
             Log.console(`MDB F16 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
 
             this.WriteMultipleRegistersResult.success
                 ? console.log(this.WriteMultipleRegistersResult.msg)
