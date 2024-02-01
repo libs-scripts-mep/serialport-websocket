@@ -1,7 +1,7 @@
-import { createServer } from 'node:http'
+import ModbusRTU from "modbus-serial"
 import { Server } from 'socket.io'
 import { SerialPort } from 'serialport'
-import ModbusRTU from "modbus-serial"
+import { createServer } from 'node:http'
 
 export class SocketEvents {
   static KILL_PROCESS = "kill-process"
@@ -9,6 +9,8 @@ export class SocketEvents {
   static PORTLIST_RES = "port-list-res"
   static OPENPORTS_REQ = "get-openports-req"
   static OPENPORTS_RES = "get-openports-res"
+  static ACTIVE_SLAVE_REQ = "active-slave-req"
+  static ACTIVE_SLAVE_RES = "active-slave-res"
   static OPEN_PORT_REQ = "open-port-req"
   static OPEN_PORT_RES = "open-port-res"
   static CLOSE_PORT_REQ = "close-port-req"
@@ -73,6 +75,11 @@ io.on('connection', (socket) => {
   socket.on(SocketEvents.OPENPORTS_REQ, async () => {
     console.log("openports request")
     io.emit(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
+  })
+
+  socket.on(SocketEvents.ACTIVE_SLAVE_REQ, async () => {
+    console.log("active slaves request")
+    io.emit(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves))
   })
   //#endregion GLOBAL
 
@@ -317,10 +324,11 @@ export class SerialPortManager {
             error != null
               ? resolve({ path: port.path, success: true, msg: error.message })
               : resolve({ path: port.path, success: true, msg: `Closing ${port.path}: porta fechada com sucesso` })
-
+            SerialPortManager.openPorts.delete(tagName)
           })
         } else {
           resolve({ path: port.path, success: true, msg: `Closing ${port.path}: porta previamente fechada` })
+          SerialPortManager.openPorts.delete(tagName)
         }
 
       } else {
@@ -393,19 +401,24 @@ export class ModbusDeviceManager {
 
         if (SerialPortManager.openPorts.has(config.tagName)) {
           await SerialPortManager.close(config.tagName)
+          SerialPortManager.openPorts.delete(config.tagName)
         }
 
         const slave = new ModbusRTU()
         this.slaves.set(config.tagName, slave)
+        resolve(this.create(portInfo, config))
+
+      } else {
         try {
-          await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
-          resolve({ path: slave._port._client.path, success: true, msg: "sucesso ao criar slave" })
+          const slave = this.slaves.get(config.tagName)
+          if (!slave.isOpen) {
+            await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
+          }
+          resolve({ path: portInfo.path, success: true, msg: "sucesso ao criar slave" })
         } catch (error) {
           resolve({ path: portInfo.path, success: false, msg: `falha ao criar slave: ${error.message}` })
         }
-      } else {
-        const slave = this.slaves.get(config.tagName)
-        resolve({ path: slave._port._client.path, success: true, msg: `slave previamente criado` })
+
       }
     })
   }

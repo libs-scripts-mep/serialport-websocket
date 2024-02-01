@@ -1,7 +1,7 @@
 import Log from "../script-loader/utils-script.js"
-import { RastUtil } from "../rast-pvi/rast-pvi.js"
 import FWLink from "../daq-fwlink/FWLink.js"
 import { io } from "https://cdn.socket.io/4.7.2/socket.io.esm.min.js"
+import { RastUtil } from "../rast-pvi/rast-pvi.js"
 import { SerialUtil } from "./serial.js"
 
 export class Socket {
@@ -11,6 +11,7 @@ export class Socket {
     static PortList = null
     static Slaves = null
     static OpenPorts = null
+    static ActiveSlaves = null
     static DebugMode = false
     static CriticalErrors = ["Writing to COM port (GetOverlappedResult): Unknown error code 31"]
 
@@ -23,6 +24,8 @@ export class Socket {
         PORTLIST_RES: "port-list-res",
         OPENPORTS_REQ: "get-openports-req",
         OPENPORTS_RES: "get-openports-res",
+        ACTIVE_SLAVE_REQ: "active-slave-req",
+        ACTIVE_SLAVE_RES: "active-slave-res",
         //Commom serial commands
         OPEN_PORT_REQ: "open-port-req",
         OPEN_PORT_RES: "open-port-res",
@@ -52,6 +55,7 @@ export class Socket {
     static async startObservers() {
         Socket.IO.on(Socket.Events.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
         Socket.IO.on(Socket.Events.OPENPORTS_RES, (openPorts) => { console.log(openPorts); Socket.OpenPorts = openPorts })
+        Socket.IO.on(Socket.Events.ACTIVE_SLAVE_RES, (slaves) => { console.log(slaves); Socket.ActiveSlaves = slaves })
         Socket.IO.on(Socket.Events.SERVER_ERROR, (error) => { console.error(error); Socket.Error = error })
 
         Socket.IO.on(Socket.Events.OPEN_PORT_RES, (res) => { if (res.path == "Unknown") { console.log(res) } })
@@ -83,6 +87,19 @@ export class Socket {
 
             resolve(this.OpenPorts)
             this.OpenPorts = null
+        })
+    }
+
+    static getActiveSlaves() {
+        return new Promise(async (resolve) => {
+            Socket.IO.emit(Socket.Events.ACTIVE_SLAVE_REQ)
+
+            const timeout = setTimeout(() => { this.ActiveSlaves = {} }, Socket.RESPONSE_TIMEOUT)
+            while (this.ActiveSlaves == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
+
+            resolve(this.ActiveSlaves)
+            this.ActiveSlaves = null
         })
     }
 

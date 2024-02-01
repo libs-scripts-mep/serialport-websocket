@@ -82,7 +82,7 @@ export class Serial {
             Socket.IO.emit(Socket.Events.CLOSE_PORT_REQ, this.TAG)
 
             const timeout = setTimeout(() => { this.CloseResult = { success: false, path: this.PORT.path, msg: `Closing ${this.PORT.path}: Falha ao fechar porta (timeout)` } }, 200)
-            
+
             while (this.CloseResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
             Log.console(this.CloseResult.msg, this.CloseResult.success ? this.Log.success : this.Log.error)
@@ -466,9 +466,11 @@ export class SerialReqManager extends Serial {
 
             const portList = await Socket.getPortList()
             const openPorts = await Socket.getOpenPorts()
+            const activeSlaves = await Socket.getActiveSlaves()
+            const isActiveSlave = this.TAG in activeSlaves
             const isOpenOnServer = this.TAG in openPorts
 
-            if (!isOpenOnServer) {
+            if (!isOpenOnServer && !isActiveSlave) {
 
                 const filteredProps = SerialUtil.filterByProps(portList, filter)
                 filteredProps.length == 0 ? filteredProps[0] = portList : null
@@ -496,6 +498,7 @@ export class SerialReqManager extends Serial {
                                 }
 
                             } else {
+                                await this.close()
                                 this.removePort(port)
                             }
                             await SerialUtil.Delay(20)
@@ -507,14 +510,28 @@ export class SerialReqManager extends Serial {
                     resolve({ success: false, port: this.PORT, msg: "Não há nenhuma porta serial para se conectar" })
                 }
             } else {
-                const path = openPorts[this.TAG].settings.path
-                const portInfo = SerialUtil.filterByProps(portList, { path })
 
-                if (portInfo[0].length == 0) {
-                    resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
-                } else {
-                    this.PORT = portInfo[0][0]
-                    resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
+                if (isActiveSlave) {
+                    const path = activeSlaves[this.TAG]._port._client.settings.path
+                    const portInfo = SerialUtil.filterByProps(portList, { path })
+                    
+                    if (portInfo[0].length == 0) {
+                        resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
+                    } else {
+                        this.PORT = portInfo[0][0]
+                        resolve({ success: true, port: this.PORT, msg: "Porta já é um slave ativo no server" })
+                    }
+
+                } else if (isOpenOnServer) {
+                    const path = openPorts[this.TAG].settings.path
+                    const portInfo = SerialUtil.filterByProps(portList, { path })
+
+                    if (portInfo[0].length == 0) {
+                        resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
+                    } else {
+                        this.PORT = portInfo[0][0]
+                        resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
+                    }
                 }
             }
         })
