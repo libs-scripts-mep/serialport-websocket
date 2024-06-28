@@ -9,6 +9,9 @@ export class Modbus extends SerialReqManager {
         this.NodeAddress = null
         this.CreateResult = null
         this.NodeAddressResult = null
+        this.OpenSlaveResult = null
+        this.CloseSlaveResult = null
+        this.FreeSlaveResult = null
 
         this.ReadInputRegistersResult = null
         this.ReadHoldingRegistersResult = null
@@ -21,30 +24,31 @@ export class Modbus extends SerialReqManager {
     static RESPONSE_TIMEOUT = 300
 
     startSocketCallbacksMDB() {
+        Socket.IO.on(Socket.Events.FREE_SLAVE_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.FreeSlaveResult = res } } })
+        Socket.IO.on(Socket.Events.OPEN_MODBUS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.OpenSlaveResult = res } } })
+        Socket.IO.on(Socket.Events.CLOSE_MODBUS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CloseSlaveResult = res } } })
         Socket.IO.on(Socket.Events.CREATE_MODBUS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.CreateResult = res } } })
-        Socket.IO.on(Socket.Events.SET_NODE_ADDRESS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.NodeAddressResult = res; this.NodeAddress = res.addr } } })
         Socket.IO.on(Socket.Events.READ_DEVICE_ID_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadDeviceIdentificationResult = res } } })
+        Socket.IO.on(Socket.Events.SET_NODE_ADDRESS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.NodeAddressResult = res; this.NodeAddress = res.addr } } })
         Socket.IO.on(Socket.Events.READ_INPUT_REGISTERS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadInputRegistersResult = res } } })
-        Socket.IO.on(Socket.Events.READ_HOLDING_REGISTERS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadHoldingRegistersResult = res } } })
         Socket.IO.on(Socket.Events.WRTIE_HOLDING_REGISTER_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.WriteSingleRegisterResult = res } } })
+        Socket.IO.on(Socket.Events.READ_HOLDING_REGISTERS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.ReadHoldingRegistersResult = res } } })
         Socket.IO.on(Socket.Events.WRTIE_HOLDING_REGISTERS_RES, (res) => { if (this.PORT != null) { if (res.path == this.PORT.path) { this.WriteMultipleRegistersResult = res } } })
     }
 
     /**
-     * Transforma uma porta serial em um dispositivo modbus (server-side)
-     * @returns Object 
+     * Transform a instance of serial into a Modbus device (server-side).
      * 
-     * # Exemplos
+     * ⚠️ After transforming, the serial instance will not be available for use.
      * 
-     * ```js
-     * const result = await this.create()
-     * ```
+     * ⚠️ After creating the slave, the port will remain open, so it's necessary to open it manually.
+     *
+     * @returns {Promise<{success: boolean, msg: string}>}
      * 
-     * # Result
-     * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * @example
+     * const mdb = new Modbus()
+     * await mdb.create()
+     *
      */
     async create() {
         return new Promise(async (resolve) => {
@@ -59,8 +63,8 @@ export class Modbus extends SerialReqManager {
             clearTimeout(timeout)
 
             this.CreateResult.success
-                ? Log.console(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.Log.success)
-                : Log.warn(`MDB ${this.PORT.path}: ${this.CreateResult.msg}`, this.Log.error)
+                ? Log.console(`MDB ${this.PORT == null ? "?" : this.PORT.path}: ${this.CreateResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ${this.PORT == null ? "?" : this.PORT.path}: ${this.CreateResult.msg}`, this.Log.error)
 
             resolve(this.CreateResult)
 
@@ -70,21 +74,117 @@ export class Modbus extends SerialReqManager {
     }
 
     /**
+     * Opens serial port of Modbus device.
+     *
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      * 
-     * @param {Number} nodeAddress 
-     * @returns Object 
+     * @example
+     * const modbus = new Modbus()
+     * await modbus.create()
+     * await modbus.closeSlave()
+     * await modbus.openSlave()
+     */
+    async openSlave() {
+        return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+
+            this.Busy = true
+            const timeout = setTimeout(() => { this.OpenSlaveResult = { success: false, msg: `${this.TAG}: Falha ao abrir slave (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+
+            Socket.IO.emit(Socket.Events.OPEN_MODBUS_REQ, { tagName: this.TAG })
+
+            while (this.OpenSlaveResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
+
+            this.OpenSlaveResult.success
+                ? Log.console(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.OpenSlaveResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.OpenSlaveResult.msg}`, this.Log.error)
+
+            resolve(this.OpenSlaveResult)
+
+            this.OpenSlaveResult = null
+            this.Busy = false
+        })
+    }
+
+    /**
+     * Fecha porta serial do dispositivo Modbus.
+     *
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      * 
-     * # Exemplos
+     * @example
+     * const modbus = new Modbus()
+     * await modbus.create()
+     * await modbus.closeSlave()
+     */
+    async closeSlave() {
+        return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+
+            this.Busy = true
+            const timeout = setTimeout(() => { this.CloseSlaveResult = { success: false, msg: `${this.TAG}: Falha ao fechar slave (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+
+            Socket.IO.emit(Socket.Events.CLOSE_MODBUS_REQ, { tagName: this.TAG })
+
+            while (this.CloseSlaveResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
+
+            this.CloseSlaveResult.success
+                ? Log.console(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.CloseSlaveResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.CloseSlaveResult.msg}`, this.Log.error)
+
+            resolve(this.CloseSlaveResult)
+
+            this.CloseSlaveResult = null
+            this.Busy = false
+        })
+    }
+
+    /**
+     * Libera o slave, permitindo transforma-lo novamente em uma instancia serial comum.
      * 
-     * ```js
-     * const result = await this.setNodeAddress(0x10)
-     * ```
+     * ⚠️ Após liberar o slave, nao sera possivel continuar comunicando
+     *
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      * 
-     * # Result
+     * @example
+     * const mdb = new Modbus()
+     * await mdb.create()
+     * const result = await mdb.freeSlave()
+     */
+    async freeSlave() {
+        return new Promise(async (resolve) => {
+            while (this.Busy) { await SerialUtil.Delay(10) }
+
+            this.Busy = true
+            const timeout = setTimeout(() => { this.FreeSlaveResult = { success: false, msg: `${this.TAG}: Falha ao libertar slave (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+
+            Socket.IO.emit(Socket.Events.CLOSE_MODBUS_REQ, { tagName: this.TAG })
+
+            while (this.FreeSlaveResult == null) { await SerialUtil.Delay(10) }
+            clearTimeout(timeout)
+
+            this.FreeSlaveResult.success
+                ? Log.console(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.FreeSlaveResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.FreeSlaveResult.msg}`, this.Log.error)
+
+            resolve(this.FreeSlaveResult)
+
+            this.FreeSlaveResult = null
+            this.Busy = false
+        })
+    }
+
+    /**
+     * Define o node address para o dispositivo Modbus.
+     *
+     * @param {number} nodeAddress - O novo node address a ser definido.
+     * @return {Promise<{success: boolean, msg: string}>} Uma promessa que resolve para um objeto com o status de sucesso e uma mensagem.
      * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * @example
+     * const mdb = new Modbus()
+     * await mdb.create()
+     * const result = await mdb.setNodeAddress(1)
      */
     async setNodeAddress(nodeAddress) {
         return new Promise(async (resolve) => {
@@ -99,8 +199,8 @@ export class Modbus extends SerialReqManager {
             clearTimeout(timeout)
 
             this.NodeAddressResult.success
-                ? Log.console(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.success)
-                : Log.warn(`MDB ADDR ${this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.error)
+                ? Log.console(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.success)
+                : Log.warn(`MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${this.NodeAddressResult.msg}`, this.Log.error)
 
             resolve(this.NodeAddressResult)
 
@@ -109,12 +209,13 @@ export class Modbus extends SerialReqManager {
         })
     }
 
+
     /**
-     * 
-     * @param {Number} idCode 
-     * @param {Number} objectId 
-     * 
-     * @returns Object 
+     * Asynchronously reads the device identification.
+     *
+     * @param {number} idCode - The identification code.
+     * @param {number} objectId - The object ID.
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      */
     async ReadDeviceIdentification(idCode, objectId) {
         return new Promise(async (resolve) => {
@@ -124,7 +225,7 @@ export class Modbus extends SerialReqManager {
             const timeout = setTimeout(() => { this.ReadDeviceIdentificationResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_DEVICE_ID_REQ, { idCode, objectId, tagName: this.TAG })
-            Log.console(`MDB F43 ${this.PORT.path} ${this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
+            Log.console(`MDB F43 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
 
             while (this.ReadDeviceIdentificationResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -140,28 +241,19 @@ export class Modbus extends SerialReqManager {
         })
     }
 
+
     /**
-     * Realiza leitura de registradores somente leitura
-     * @param {Number} startAddress Endereço inicial de leitura
-     * @param {Number} qty Quantidade de registradores a serem lidos
-     * @param {Number} tryNumber Número de tentativas para realizar a leitura
-     * @param {Number} maxTries Contador de tentativas
-     * @returns Object 
+     * Asynchronously reads input registers from the Modbus device.
+     *
+     * @param {number} startAddress - The starting address of the input registers.
+     * @param {number} qty - The quantity of input registers to read.
+     * @param {number} [tryNumber=1] - The current try number
+     * @param {number} [maxTries=3] - The maximum number of tries 
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      * 
-     * Utilizando configurações de tentativas default
-     * ```js
-     * const writeValue = await this.ReadInputRegisters(0x20, 30)
-     * ```
-     * Utilizando configurações de tentativas personalizadas
-     * ```js
-     * const writeValue = await this.ReadInputRegisters(0x20, 30, 1, 1)
-     * ```
-     * 
-     * # Result
-     * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * @example
+     * const modbus = new Modbus();
+     * const result = await modbus.ReadInputRegisters(0, 10);
      */
     async ReadInputRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
         return new Promise(async (resolve) => {
@@ -171,7 +263,7 @@ export class Modbus extends SerialReqManager {
             const timeout = setTimeout(() => { this.ReadInputRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_INPUT_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F04 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -193,29 +285,18 @@ export class Modbus extends SerialReqManager {
         })
     }
 
+
     /**
-     * Realiza leitura de registradores de leitura e escrita
-     * @param {Number} startAddress Endereço inicial de leitura
-     * @param {Number} qty Quantidade de registradores a serem lidos
-     * @param {Number} tryNumber Número de tentativas para realizar a leitura
-     * @param {Number} maxTries Contador de tentativas
-     * @returns Object 
-     * # Exemplos
-     * 
-     * Utilizando configurações de tentativas default
-     * ```js
-     * const writeValue = await this.ReadHoldingRegisters(0x30, 30)
-     * ```
-     * Utilizando configurações de tentativas personalizadas
-     * ```js
-     * const writeValue = await this.ReadHoldingRegisters(0x30, 30, 1, 1)
-     * ```
-     * 
-     * # Result
-     * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * Reads holding registers from a Modbus device.
+     *
+     * @param {number} startAddress - The starting address of the holding registers.
+     * @param {number} qty - The quantity of holding registers to read.
+     * @param {number} [tryNumber=1] - The number of times to try reading the holding registers.
+     * @param {number} [maxTries=3] - The maximum number of tries to read the holding registers.
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves with the result of the read operation.
+     * @example
+     * const modbus = new Modbus();
+     * const { success, msg } = await modbus.ReadHoldingRegisters(0, 10);
      */
     async ReadHoldingRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
         return new Promise(async (resolve) => {
@@ -225,7 +306,7 @@ export class Modbus extends SerialReqManager {
             const timeout = setTimeout(() => { this.ReadHoldingRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F03 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -247,30 +328,19 @@ export class Modbus extends SerialReqManager {
         })
     }
 
+
     /**
-     * Escreve um valor em um único registrador
-     * @param {Number} startAddress Endereço inicial de escrita
-     * @param {Number} value Valor que será enviado ao dispositivo
-     * @param {Number} tryNumber Número de tentativas para realizar a escrita
-     * @param {Number} maxTries Contador de tentativas
-     * @returns Object 
+     * Writes a single register on a Modbus device.
+     *
+     * @param {number} startAddress - The starting address of the register.
+     * @param {number} value - The value to write to the register.
+     * @param {number} [tryNumber=1] - The number of tries made so far.
+     * @param {number} [maxTries=3] - The maximum number of tries allowed.
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to an object with the success status and a message.
      * 
-     * # Exemplos
-     * 
-     * Utilizando configurações de tentativas default
-     * ```js
-     * const writeValue = await this.WriteSingleRegister(0x30, 30)
-     * ```
-     * Utilizando configurações de tentativas personalizadas
-     * ```js
-     * const writeValue = await this.WriteSingleRegister(0x30, 30, 1, 1)
-     * ```
-     * 
-     * # Result
-     * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * @example
+     * const mdb = new Modbus(9600, "MDB")
+     * const { success, msg } = await mdb.WriteSingleRegister(0x00, 0x01)
      */
     async WriteSingleRegister(startAddress, value, tryNumber = 1, maxTries = 3) {
         return new Promise(async (resolve) => {
@@ -280,7 +350,7 @@ export class Modbus extends SerialReqManager {
             const timeout = setTimeout(() => { this.WriteSingleRegisterResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTER_REQ, { startAddress, value, tagName: this.TAG })
-            Log.console(`MDB F06 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
+            Log.console(`MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
 
             while (this.WriteSingleRegisterResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -302,30 +372,19 @@ export class Modbus extends SerialReqManager {
         })
     }
 
+
     /**
-     * Escreve um valor em um múltiplos registradores
-     * @param {Number} startAddress Endereço inicial de escrita
-     * @param {Array} arrValues Valores que serão enviados ao dispositivo
-     * @param {Number} tryNumber Número de tentativas para realizar a escrita
-     * @param {Number} maxTries Contador de tentativas
-     * @returns Object 
+     * Asynchronously writes multiple registers.
+     *
+     * @param {number} startAddress - The starting address for writing registers.
+     * @param {Array} arrValues - An array of values to write.
+     * @param {number} tryNumber - The number of attempts
+     * @param {number} maxTries - The maximum number of tries
+     * @return {Promise<{success: boolean, msg: string}>} A promise that resolves to the result of writing multiple registers.
      * 
-     * # Exemplos
-     * 
-     * Utilizando configurações de tentativas default
-     * ```js
-     * const writeValues = await this.WriteMultipleRegisters(0x30, [1, 10, 30])
-     * ```
-     * Utilizando configurações de tentativas personalizadas
-     * ```js
-     * const writeValues = await this.WriteMultipleRegisters(0x30, [1, 10, 30], 1, 1)
-     * ```
-     * 
-     * # Result
-     * 
-     * ```js
-     * {path: String, success: Boolean, msg: String}
-     * ```
+     * @example
+     * const mdb = new Modbus(9600, "MDB")
+     * const { success, msg } = await mdb.WriteMultipleRegisters(0x00, [0x01, 0x02])
      */
     async WriteMultipleRegisters(startAddress, arrValues, tryNumber = 1, maxTries = 3) {
         return new Promise(async (resolve) => {
@@ -335,7 +394,7 @@ export class Modbus extends SerialReqManager {
             const timeout = setTimeout(() => { this.WriteMultipleRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTERS_REQ, { startAddress, arrValues, tagName: this.TAG })
-            Log.console(`MDB F16 ${this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
+            Log.console(`MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)

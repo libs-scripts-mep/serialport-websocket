@@ -20,6 +20,12 @@ export class SocketEvents {
   static WRITE_TO_REQ = "tx-buffer-req"
   static WRITE_TO_RES = "tx-buffer-res"
   static SERVER_ERROR = "server-error"
+  static OPEN_MODBUS_REQ = "open-mdb-slave-req"
+  static OPEN_MODBUS_RES = "open-mdb-slave-res"
+  static CLOSE_MODBUS_REQ = "close-mdb-slave-req"
+  static CLOSE_MODBUS_RES = "close-mdb-slave-res"
+  static FREE_SLAVE_REQ = "free-mdb-slave-req"
+  static FREE_SLAVE_RES = "free-mdb-slave-res"
   static CREATE_MODBUS_REQ = "create-mdb-slave-req"
   static CREATE_MODBUS_RES = "create-mdb-slave-res"
   static SET_NODE_ADDRESS_REQ = "set-mdb-slave-addr-req"
@@ -40,12 +46,14 @@ const port = 3000
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
 
+
 /**
- * 
- * @param {Object} obj 
- * @param {String} prop 
- * @param {String} expectedType 
- * @returns 
+ * Validates the type of a property in an object.
+ *
+ * @param {Object} obj - The object to evaluate.
+ * @param {string} propName - The name of the property to validate.
+ * @param {string} expectedType - The expected data type of the property.
+ * @return {{success: boolean, msg: string}} An object indicating the success of the validation and a message.
  */
 function evalProps(obj, propName, expectedType) {
   if (!propName in obj) { return { success: false, msg: `Propriedade ${propName} não informada no objeto passado` } }
@@ -135,6 +143,42 @@ io.on('connection', (socket) => {
   //#endregion SERIAL
 
   //#region MODBUS
+
+  socket.on(SocketEvents.OPEN_MODBUS_REQ, async (obj) => {
+    console.log("open mbd slave request", obj)
+
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+
+    if (!evalTagName.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
+    } else {
+      io.emit(SocketEvents.OPEN_MODBUS_RES, await ModbusDeviceManager.open(obj.tagName))
+    }
+  })
+
+  socket.on(SocketEvents.CLOSE_MODBUS_REQ, async (obj) => {
+    console.log("close mbd slave request", obj)
+
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+
+    if (!evalTagName.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
+    } else {
+      io.emit(SocketEvents.CLOSE_MODBUS_RES, await ModbusDeviceManager.close(obj.tagName))
+    }
+  })
+
+  socket.on(SocketEvents.FREE_SLAVE_REQ, async (obj) => {
+    console.log("close mbd slave request", obj)
+
+    const evalTagName = evalProps(obj, 'tagName', 'string')
+
+    if (!evalTagName.success) {
+      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
+    } else {
+      io.emit(SocketEvents.FREE_SLAVE_RES, await ModbusDeviceManager.freeSlave(obj.tagName))
+    }
+  })
 
   socket.on(SocketEvents.CREATE_MODBUS_REQ, async (obj) => {
     console.log("create mbd slave request", obj)
@@ -239,13 +283,27 @@ http.listen(port, () => { console.log(`Serial WebSocket executando em http://loc
 export class SerialPortManager {
 
   static ports = null
+
+  /** @type {Map<string, SerialPort>} */
   static openPorts = new Map()
 
+  /**
+   * Retrieves a list of available serial ports and updates the class property `ports`.
+   *
+   * @return {Promise<Array<Object>>} A Promise that resolves with an array of serial port objects.
+   */
   static async portListUpdate() {
     this.ports = await SerialPort.list()
     return this.ports
   }
 
+  /**
+   * Opens a serial port with the specified configuration.
+   *
+   * @param { Object } portInfo - Information about the port.
+   * @param {{ baudRate: number, parity: string, tagName: string }} config - Configuration options.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and a message.
+   */
   static async open(portInfo, config) {
     return new Promise((resolve) => {
 
@@ -313,6 +371,12 @@ export class SerialPortManager {
     })
   }
 
+  /**
+   * Closes a port if it is open and deletes it from the openPorts map.
+   *
+   * @param {string} tagName - The tag name of the port to close.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and a message.
+   */
   static async close(tagName) {
     return new Promise((resolve) => {
 
@@ -337,6 +401,13 @@ export class SerialPortManager {
     })
   }
 
+  /**
+   * A function to write data to a port if it is open and writable.
+   * 
+   * @param {string} tagName - The tag name of the port.
+   * @param {{ content: string | Array<number>, encoding: BufferEncoding}} message - The message object containing content and encoding.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing path, success status, and a message.
+   */
   static async write(tagName, message) {
     return new Promise((resolve) => {
       if (this.openPorts.has(tagName)) {
@@ -361,6 +432,13 @@ export class SerialPortManager {
     })
   }
 
+  /**
+   * A description of the entire function.
+   *
+   * @param {string} tagName - description of parameter
+   * @param {string} [encoding="hex"] - description of parameter
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing path, success status, and a message.
+   */
   static async read(tagName, encoding = "hex") {
     return new Promise((resolve) => {
       if (this.openPorts.has(tagName)) {
@@ -384,16 +462,22 @@ export class SerialPortManager {
 export class ModbusDeviceManager {
 
   static MODBUS_RESPONSE_TIMEOUT = 200
+
+  /** @type {Map<string, ModbusRTU>} */
   static slaves = new Map()
 
-  static async timeOut(timeout) {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({ timeout: true })
-      }, timeout)
-    })
+  static async timeout(timeout) {
+    return new Promise((resolve) => { setTimeout(() => { resolve({ timeout: true }) }, timeout) })
   }
 
+
+  /**
+   * Creates a new Modbus slave.
+   *
+   * @param {Object} portInfo - Information about the port.
+   * @param {{ baudRate: number, parity: string, tagName: string }} config - Configuration options.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and a message.
+   */
   static create(portInfo, config) {
     return new Promise(async (resolve) => {
 
@@ -412,7 +496,7 @@ export class ModbusDeviceManager {
         try {
           const slave = this.slaves.get(config.tagName)
           if (!slave.isOpen) {
-            await slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
+            slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
           }
           resolve({ path: portInfo.path, success: true, msg: "sucesso ao criar slave" })
         } catch (error) {
@@ -423,18 +507,81 @@ export class ModbusDeviceManager {
     })
   }
 
-  static close() { //WIP...
+  /**
+   * Closes a slave device.
+   *
+   * @param {string} tagName - The tag name of the slave device.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A promise that resolves with an object containing the path, success status, and a message.
+   */
+  static close(tagName) {
     return new Promise((resolve) => {
-      if (this.slaves.has(config.tagName)) {
-        const slave = this.slaves.get(config.tagName)
-        slave.close(() => {
-          this.slaves.delete(config.tagName)
-          resolve()
+      if (this.slaves.has(tagName)) {
+        const slave = this.slaves.get(tagName)
+        slave.close((err) => {
+          if (err != null) {
+            if (err.message.includes("Port is not open")) {
+              resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao fechar slave: porta previamente fechada` })
+            } else {
+              resolve({ path: slave._port._client.path, success: false, msg: `falha ao fechar slave: ${err}` })
+            }
+          } else {
+            resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao fechar slave` })
+          }
         })
       }
     })
   }
 
+  /**
+   * A function to open a slave based on the provided tagName.
+   *
+   * @param {string} tagName - The tag name of the slave to be opened.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A promise that resolves with information about the success or failure of opening the slave.
+   */
+  static open(tagName) {
+    return new Promise((resolve) => {
+      if (this.slaves.has(tagName)) {
+        const slave = this.slaves.get(tagName)
+        slave.open((err) => {
+          if (err != null) {
+            if (err.message.includes("Port is already open")) {
+              resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao abrir slave: porta previamente aberta` })
+            } else {
+              resolve({ path: slave._port._client.path, success: false, msg: `falha ao abrir slave: ${err}` })
+            }
+          } else {
+            resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao abrir slave` })
+          }
+        })
+      }
+    })
+  }
+
+  /**
+   * A function that frees a slave based on the given tagName.
+   *
+   * @param {string} tagName - The tag name of the slave to be freed.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing path, success status, and a message.
+   */
+  static freeSlave(tagName) {
+    return new Promise((resolve) => {
+      if (this.slaves.has(tagName)) {
+        const slave = this.slaves.get(tagName)
+        slave.close(() => {
+          this.slaves.delete(tagName)
+          resolve({ path: slave._port._client.path, success: true, msg: `sucesso ao libertar slave` })
+        })
+      }
+    })
+  }
+
+  /**
+   * Sets the node address for a slave device.
+   *
+   * @param {number} addr - The new node address to set.
+   * @param {string} tagName - The tag name of the slave device.
+   * @return {Promise<{path: string, success: boolean, msg: string, addr: number}>} A Promise that resolves with an object containing the path, success status, a message, and the new node address.
+   */
   static setNodeAddress(addr, tagName) {
     return new Promise((resolve) => {
       if (this.slaves.has(tagName)) {
@@ -446,17 +593,25 @@ export class ModbusDeviceManager {
           resolve({ path: slave._port._client.path, success: false, msg: `falha ao setar node address: ${error.message}`, addr })
         }
       } else {
-        resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema` })
+        resolve({ path: "Unknown", success: false, msg: `Unknown: slave nunca foi criado pelo sistema`, addr: null })
       }
     })
   }
 
+  /**
+   * Reads input registers from a slave device.
+   *
+   * @param {string} tagName - The tag name of the slave device.
+   * @param {number} startAddress - The starting address to read from.
+   * @param {number} qty - The quantity of registers to read.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and message.
+   */
   static readInputRegisters(tagName, startAddress, qty) {
     return new Promise(async (resolve) => {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await Promise.race([slave.readInputRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          const result = await Promise.race([slave.readInputRegisters(startAddress, qty), this.timeout(this.MODBUS_RESPONSE_TIMEOUT)])
           "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result.data })
@@ -469,12 +624,20 @@ export class ModbusDeviceManager {
     })
   }
 
+  /**
+   * A function to read holding registers from a slave device.
+   *
+   * @param {string} tagName - The tag name of the slave device.
+   * @param {number} startAddress - The starting address to read from.
+   * @param {number} qty - The quantity of registers to read.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and message.
+   */
   static readHoldingRegisters(tagName, startAddress, qty) {
     return new Promise(async (resolve) => {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await Promise.race([slave.readHoldingRegisters(startAddress, qty), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          const result = await Promise.race([slave.readHoldingRegisters(startAddress, qty), this.timeout(this.MODBUS_RESPONSE_TIMEOUT)])
           "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao ler registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result.data })
@@ -487,12 +650,20 @@ export class ModbusDeviceManager {
     })
   }
 
+  /**
+   * A function to write a holding register for a slave device.
+   *
+   * @param {string} tagName - The tag name of the slave device.
+   * @param {number} startAddress - The starting address to write to.
+   * @param {number} value - The value to write to the register.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and message.
+   */
   static writeHoldingRegister(tagName, startAddress, value) {
     return new Promise(async (resolve) => {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await Promise.race([slave.writeRegister(startAddress, value), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          const result = await Promise.race([slave.writeRegister(startAddress, value), this.timeout(this.MODBUS_RESPONSE_TIMEOUT)])
           "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result })
@@ -505,12 +676,20 @@ export class ModbusDeviceManager {
     })
   }
 
+  /**
+   * A function to write holding registers for a slave device.
+   *
+   * @param {string} tagName - The tag name of the slave device.
+   * @param {number} startAddress - The starting address to write to.
+   * @param {Array<number>} arrValues - An array of values to write to the holding registers.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and message.
+   */
   static writeHoldingRegisters(tagName, startAddress, arrValues) {
     return new Promise(async (resolve) => {
       if (this.slaves.has(tagName)) {
         const slave = this.slaves.get(tagName)
         try {
-          const result = await Promise.race([slave.writeRegisters(startAddress, arrValues), this.timeOut(this.MODBUS_RESPONSE_TIMEOUT)])
+          const result = await Promise.race([slave.writeRegisters(startAddress, arrValues), this.timeout(this.MODBUS_RESPONSE_TIMEOUT)])
           "timeout" in result
             ? resolve({ path: slave._port._client.path, success: false, msg: `falha ao escrever em registradores: timeout` })
             : resolve({ path: slave._port._client.path, success: true, msg: result })
@@ -523,6 +702,14 @@ export class ModbusDeviceManager {
     })
   }
 
+  /**
+   * A function to read the device identification based on the provided tag name, id code, and object id.
+   *
+   * @param {string} tagName - The tag name of the device.
+   * @param {number} idCode - The identification code of the device.
+   * @param {number} objectId - The object id of the device.
+   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and message.
+   */
   static readDeviceID(tagName, idCode, objectId) {
     return new Promise(async (resolve) => {
       if (this.slaves.has(tagName)) {
