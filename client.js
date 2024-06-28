@@ -36,6 +36,12 @@ export class Socket {
         WRITE_TO_REQ: "tx-buffer-req",
         WRITE_TO_RES: "tx-buffer-res",
         //Modbus only commands
+        OPEN_MODBUS_REQ: "open-mdb-slave-req",
+        OPEN_MODBUS_RES: "open-mdb-slave-res",
+        CLOSE_MODBUS_REQ: "close-mdb-slave-req",
+        CLOSE_MODBUS_RES: "close-mdb-slave-res",
+        FREE_SLAVE_REQ: "free-mdb-slave-req",
+        FREE_SLAVE_RES: "free-mdb-slave-res",
         CREATE_MODBUS_REQ: "create-mdb-slave-req",
         CREATE_MODBUS_RES: "create-mdb-slave-res",
         SET_NODE_ADDRESS_REQ: "set-mdb-slave-addr-req",
@@ -134,8 +140,17 @@ export class Socket {
     static {
         window.Socket = Socket
         window.onbeforeunload = () => { return Socket.killProcess() }
-        window.onkeydown = (e) => { if (e.keyCode == 65 && e.ctrlKey) { window.onbeforeunload = () => { } } }
-        window.onkeydown = (e) => { if ((e.which || e.keyCode) == 116) { window.onbeforeunload = () => { } } }
+
+        /**
+         * Prevent the client being killed by the user when pressing CTRL + W or F5.
+         *
+         * @param {KeyboardEvent} e - The keydown event.
+         * @return {void} This function does not return a value.
+         */
+        window.onkeydown = (e) => {
+            if (e.ctrlKey && e.code == "KeyR") { window.onbeforeunload = () => { } }
+            if (e.code == "F5") { window.onbeforeunload = () => { } }
+        }
 
         Socket.startObservers()
         Socket.startProcess()
