@@ -5,6 +5,7 @@ export class Modbus extends SerialReqManager {
     constructor(baudrate, tag, port, parity, policy = "Queue") {
         super(baudrate, tag, port, parity, policy)
         this.Busy = false
+        this.name = null
 
         this.NodeAddress = null
         this.CreateResult = null
@@ -222,10 +223,10 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
-            const timeout = setTimeout(() => { this.ReadDeviceIdentificationResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+            const timeout = setTimeout(() => { this.ReadDeviceIdentificationResult = { success: false, msg: `${this.name || this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_DEVICE_ID_REQ, { idCode, objectId, tagName: this.TAG })
-            Log.console(`MDB F43 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
+            Log.console(`MDB F43 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: idCode => ${idCode} objectId => ${objectId}`, this.Log.req)
 
             while (this.ReadDeviceIdentificationResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -260,10 +261,10 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
-            const timeout = setTimeout(() => { this.ReadInputRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+            const timeout = setTimeout(() => { this.ReadInputRegistersResult = { success: false, msg: `${this.name || this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_INPUT_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadInputRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -303,10 +304,10 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
-            const timeout = setTimeout(() => { this.ReadHoldingRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+            const timeout = setTimeout(() => { this.ReadHoldingRegistersResult = { success: false, msg: `${this.name || this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.READ_HOLDING_REGISTERS_REQ, { startAddress, qty, tagName: this.TAG })
-            Log.console(`MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
+            Log.console(`MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`, this.Log.req)
 
             while (this.ReadHoldingRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -347,10 +348,10 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
-            const timeout = setTimeout(() => { this.WriteSingleRegisterResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+            const timeout = setTimeout(() => { this.WriteSingleRegisterResult = { success: false, msg: `${this.name || this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTER_REQ, { startAddress, value, tagName: this.TAG })
-            Log.console(`MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
+            Log.console(`MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`, this.Log.req)
 
             while (this.WriteSingleRegisterResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
@@ -391,10 +392,10 @@ export class Modbus extends SerialReqManager {
             while (this.Busy) { await SerialUtil.Delay(10) }
 
             this.Busy = true
-            const timeout = setTimeout(() => { this.WriteMultipleRegistersResult = { success: false, msg: `${this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
+            const timeout = setTimeout(() => { this.WriteMultipleRegistersResult = { success: false, msg: `${this.name || this.TAG}: Dispositivo não respondeu (timeout)` } }, Modbus.RESPONSE_TIMEOUT)
 
             Socket.IO.emit(Socket.Events.WRTIE_HOLDING_REGISTERS_REQ, { startAddress, arrValues, tagName: this.TAG })
-            Log.console(`MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
+            Log.console(`MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`, this.Log.req)
 
             while (this.WriteMultipleRegistersResult == null) { await SerialUtil.Delay(10) }
             clearTimeout(timeout)
