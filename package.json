@@ -1,6 +1,6 @@
 {
   "name": "@libs-scripts-mep/serialport-websocket",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Biblioteca que permite gerenciar portas seriais através do browser via websocket",
   "main": "client.js",
   "dependencies": {
