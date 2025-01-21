@@ -569,7 +569,7 @@ export class SerialUtil {
         return result
     }
 
-    static hexStrToIntBuff(hexStr, size) {''
+    static hexStrToIntBuff(hexStr, size) {
         const result = []
         if (hexStr != null) {
             while (hexStr.length >= size) {
