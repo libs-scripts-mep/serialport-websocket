@@ -569,7 +569,7 @@ export class SerialUtil {
         return result
     }
 
-    static hexStrToIntBuff(hexStr, size) {
+    static hexStrToIntBuff(hexStr, size) {''
         const result = []
         if (hexStr != null) {
             while (hexStr.length >= size) {
@@ -589,6 +589,16 @@ export class SerialUtil {
             return result.join(separator)
         }
         return ""
+    }
+
+    static hexToAscii(hex) {
+        let ascii = '';
+        hex = hex.split(" ").join("")
+        for (let i = 0; i < hex.length; i += 2) {
+            // Pega cada par de caracteres (um byte) e converte para decimal, depois para ASCII
+            ascii += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+        }
+        return ascii;
     }
 
     static { window.SerialUtil = SerialUtil }
