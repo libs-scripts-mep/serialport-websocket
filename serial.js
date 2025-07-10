@@ -473,7 +473,7 @@ export class SerialReqManager extends Serial {
             if (!isOpenOnServer && !isActiveSlave) {
 
                 const filteredProps = SerialUtil.filterByProps(portList, filter)
-                filteredProps.length == 0 ? filteredProps[0] = portList : null
+                filteredProps[0].length == 0 ? filteredProps[0] = portList : null
 
                 if (filteredProps.length > 0) {
 
@@ -542,8 +542,6 @@ export class SerialReqManager extends Serial {
     * deve ser um filtro preciso para que seja encontrada apenas uma porta.
     * Sugestão usar como no exemplo.
     * @param {object} filter
-    * @returns {{success: Boolean, port: String, msg: String}} objeto com resultados {success: Boolean, port: String, msg: String}
-    * 
     * @example
     * const filter = {
     *  serialNumber: "INV-485"
@@ -555,56 +553,55 @@ export class SerialReqManager extends Serial {
     * 
     */
     async getPort(filter) {
-        return new Promise(async (resolve) => {
 
-            const portList = await Socket.getPortList()
-            const openPorts = await Socket.getOpenPorts()
-            const activeSlaves = await Socket.getActiveSlaves()
-            const isActiveSlave = this.TAG in activeSlaves
-            const isOpenOnServer = this.TAG in openPorts
+        const portList = await Socket.getPortList()
+        const openPorts = await Socket.getOpenPorts()
+        const activeSlaves = await Socket.getActiveSlaves()
+        const isActiveSlave = this.TAG in activeSlaves
+        const isOpenOnServer = this.TAG in openPorts
 
-            if (!isOpenOnServer && !isActiveSlave) {
+        if (!isOpenOnServer && !isActiveSlave) {
 
-                const filteredSerial = SerialUtil.filterByProps(portList, filter)
+            const filteredSerial = SerialUtil.filterByProps(portList, filter)
 
-                if (filteredSerial[0].length == 0) {
-                    resolve({ success: false, port: this.PORT, msg: "Nenhuma porta serial encontrada com o serial number informado" })
-                }
-                else if (filteredSerial[0].length > 1) {
-                    resolve({ success: falsetrue, port: this.PORT, msg: `Foi encontrada mais de uma porta serial com o serial number informado` })
-                }
-                else {
-                    this.setPort(filteredSerial[0][0])
-                    const openResult = await this.open()
-                    resolve({ success: openResult.success, port: this.PORT, msg: openResult.msg })
+            if (filteredSerial[0].length == 0) {
+                return { success: false, port: this.PORT, msg: "Nenhuma porta serial encontrada com o serial number informado" }
+            }
+            else if (filteredSerial[0].length > 1) {
+                return { success: false, port: this.PORT, msg: `Foi encontrada mais de uma porta serial com o serial number informado` }
+            }
+            else {
+                this.setPort(filteredSerial[0][0])
+                /**@type {{success: boolean, path: string, msg: string}} */
+                const openResult = await this.open()
+                return { success: openResult.success, port: this.PORT, msg: openResult.msg }
+            }
+
+        } else {
+
+            if (isActiveSlave) {
+                const path = activeSlaves[this.TAG]._port._client.settings.path
+                const portInfo = SerialUtil.filterByProps(portList, { path })
+
+                if (portInfo[0].length == 0) {
+                    return { success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" }
+                } else {
+                    this.PORT = portInfo[0][0]
+                    return { success: true, port: this.PORT, msg: "Porta já é um slave ativo no server" }
                 }
 
             } else {
+                const path = openPorts[this.TAG].settings.path
+                const portInfo = SerialUtil.filterByProps(portList, { path })
 
-                if (isActiveSlave) {
-                    const path = activeSlaves[this.TAG]._port._client.settings.path
-                    const portInfo = SerialUtil.filterByProps(portList, { path })
-
-                    if (portInfo[0].length == 0) {
-                        resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
-                    } else {
-                        this.PORT = portInfo[0][0]
-                        resolve({ success: true, port: this.PORT, msg: "Porta já é um slave ativo no server" })
-                    }
-
-                } else if (isOpenOnServer) {
-                    const path = openPorts[this.TAG].settings.path
-                    const portInfo = SerialUtil.filterByProps(portList, { path })
-
-                    if (portInfo[0].length == 0) {
-                        resolve({ success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" })
-                    } else {
-                        this.PORT = portInfo[0][0]
-                        resolve({ success: true, port: this.PORT, msg: "Porta previamente configurada no server" })
-                    }
+                if (portInfo[0].length == 0) {
+                    return { success: false, port: this.PORT, msg: "Socket.getPortList() não retornou a porta configurada no server" }
+                } else {
+                    this.PORT = portInfo[0][0]
+                    return { success: true, port: this.PORT, msg: "Porta previamente configurada no server" }
                 }
             }
-        })
+        }
     }
 }
 
