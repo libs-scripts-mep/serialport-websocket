@@ -42,7 +42,10 @@ export class SocketEvents {
   static WRTIE_HOLDING_REGISTERS_RES = "write-mdb-holding-regs-res"
 }
 
-const port = 3000
+const CLIENT_MONITORING_INTERVAL = 500
+const INATIVITY_TIMEOUT = 10000
+
+const SERVER_PORT = 3000
 const http = createServer()
 const io = new Server(http, { cors: { origin: "*" } })
 
@@ -278,7 +281,39 @@ io.on('connection', (socket) => {
   //#endregion MODBUS
 })
 
-http.listen(port, () => { console.log(`Serial WebSocket executando em http://localhost:${port}`) })
+http.listen(SERVER_PORT, () => { console.log(`Serial WebSocket executando em http://localhost:${SERVER_PORT}`) })
+class Utils {
+  static delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function shouldExit(io) {
+  const start = Date.now()
+
+  while (Date.now() - start < INATIVITY_TIMEOUT) {
+    if (io.engine.clientsCount > 0) return false
+    await Utils.delay(CLIENT_MONITORING_INTERVAL)
+  }
+
+  return true
+}
+
+async function watchForInactivity(io) {
+  while (true) {
+    if (io.engine.clientsCount === 0) {
+      const exit = await shouldExit(io)
+
+      if (exit) {
+        console.log("Encerrando servidor serialport-websocket por inatividade")
+        process.exit(0)
+      }
+    }
+
+    await Utils.delay(CLIENT_MONITORING_INTERVAL)
+  }
+}
+
+// Chamada principal
+watchForInactivity(io)
 
 export class SerialPortManager {
 

@@ -59,6 +59,8 @@ export class Socket {
     }
 
     static async startObservers() {
+        Socket.IO.on('connect', () => { Log.warn(`🟢 Connected to websocket-serialport server on port ${Socket.ServerPort}`, Log.Colors.Green.MediumSpringGreen) })
+        Socket.IO.on('disconnect', () => { Log.warn(`🔴 Disconnected from server on port ${Socket.ServerPort}`, Log.Colors.Red.IndianRed) })
         Socket.IO.on(Socket.Events.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
         Socket.IO.on(Socket.Events.OPENPORTS_RES, (openPorts) => { console.log(openPorts); Socket.OpenPorts = openPorts })
         Socket.IO.on(Socket.Events.ACTIVE_SLAVE_RES, (slaves) => { console.log(slaves); Socket.ActiveSlaves = slaves })
@@ -116,10 +118,16 @@ export class Socket {
         return false
     }
 
-    static startProcess() {
-        setTimeout(() => {
-            if (!Socket.IO.connected) {
-                Log.console(`Subindo servidor serialport-websocket na porta ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+    static async startProcess() {
+        const start = Date.now()
+
+        while (true) {
+            const elapsed = Date.now() - start
+            if (Socket.IO.connected) {
+                Log.warn(`✅ serialport-websocket server already running on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+                return
+            } else if (elapsed > 1000) {
+                Log.warn(`⚙️ Starting serialport-websocket server on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
                 FWLink.runInstructionS("EXEC",
                     [
                         "node",
@@ -129,28 +137,17 @@ export class Socket {
                     ],
                     () => { }
                 )
-            } else {
-                Log.console(`Servidor serialport-websocket já está em execução na porta ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+                break
             }
-        }, 1000)
+            await SerialUtil.Delay(100)
+        }
+        return this.startProcess()
     }
 
     static killProcess() { Socket.IO.emit(Socket.Events.KILL_PROCESS) }
 
     static {
-        window.Socket = Socket
-        window.onbeforeunload = () => { return Socket.killProcess() }
-
-        /**
-         * Prevent the client being killed by the user when pressing CTRL + W or F5.
-         *
-         * @param {KeyboardEvent} e - The keydown event.
-         * @return {void} This function does not return a value.
-         */
-        window.onkeydown = (e) => {
-            if (e.ctrlKey && e.code == "KeyR") { window.onbeforeunload = () => { } }
-            if (e.code == "F5") { window.onbeforeunload = () => { } }
-        }
+        window.WebsocketSerialPort = Socket
 
         Socket.startObservers()
         Socket.startProcess()
