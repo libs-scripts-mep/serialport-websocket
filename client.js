@@ -6,15 +6,19 @@ import { SerialUtil } from "./serial.js"
 
 export class Socket {
     static ServerPort = 3000
-    static IO = io(`http://localhost:${this.ServerPort}`)
+    static IO = io(`http://localhost:${this.ServerPort}`, {
+        transports: ["websocket"],
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 1000,
+    })
     static Error = null
-    static PortList = null
     static Slaves = null
+    static PortList = null
+    static debugMode = false
     static OpenPorts = null
     static ActiveSlaves = null
-    static DebugMode = false
     static CriticalErrors = ["Writing to COM port (GetOverlappedResult): Unknown error code 31"]
-
+    
     static RESPONSE_TIMEOUT = 500
     static Events = {
         //Global socket commands
@@ -59,7 +63,7 @@ export class Socket {
     }
 
     static async startObservers() {
-        Socket.IO.on('connect', () => { Log.warn(`🟢 Connected to websocket-serialport server on port ${Socket.ServerPort}`, Log.Colors.Green.MediumSpringGreen) })
+        Socket.IO.on('connect', () => { Log.warn(`🟢 Connected to websocket-serialport server on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange) })
         Socket.IO.on('disconnect', () => { Log.warn(`🔴 Disconnected from server on port ${Socket.ServerPort}`, Log.Colors.Red.IndianRed) })
         Socket.IO.on(Socket.Events.PORTLIST_RES, (portList) => { console.log(portList); Socket.PortList = portList })
         Socket.IO.on(Socket.Events.OPENPORTS_RES, (openPorts) => { console.log(openPorts); Socket.OpenPorts = openPorts })
@@ -119,43 +123,59 @@ export class Socket {
     }
 
     static async startProcess() {
-        const start = Date.now()
+        const TIMEOUT_MS = 10000
+        const CHECK_INTERVAL_MS = 500
+        const ALREADY_RUNNING_CHECK_DELAY = 1000
 
-        while (true) {
-            const elapsed = Date.now() - start
-            if (Socket.IO.connected) {
-                Log.warn(`✅ serialport-websocket server already running on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
-                return
-            } else if (elapsed > 1000) {
-                Log.warn(`⚙️ Starting serialport-websocket server on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
-                FWLink.runInstructionS("EXEC",
-                    [
-                        "node",
-                        `${RastUtil.getScriptPath()}/node_modules/@libs-scripts-mep/serialport-websocket/server.js ${Socket.ServerPort}`,
-                        "true",
-                        "true"
-                    ],
-                    () => { }
-                )
-                break
-            }
-            await SerialUtil.Delay(100)
+        if (Socket.IO.connected) {
+            Log.warn(`✅ serialport-websocket server already running on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+            return
         }
-        return this.startProcess()
+
+        await SerialUtil.Delay(ALREADY_RUNNING_CHECK_DELAY)
+
+        if (Socket.IO.connected) {
+            Log.warn(`✅ serialport-websocket server already running on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+            return
+        }
+
+        Log.warn(`⚙️ Starting serialport-websocket server on port ${Socket.ServerPort}`, Log.Colors.Orange.Orange)
+
+        FWLink.runInstructionS("EXEC", [
+            "node",
+            `${RastUtil.getScriptPath()}/node_modules/@libs-scripts-mep/serialport-websocket/server.js ${Socket.ServerPort}`,
+            "true",
+            "true"
+        ], () => { })
+
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                clearInterval(pollInterval)
+                resolve({ success: false, msg: `❌ Serialport server failed to start on port ${Socket.ServerPort}` })
+            }, TIMEOUT_MS)
+
+            const pollInterval = setInterval(() => {
+                if (Socket.IO.connected) {
+                    clearInterval(pollInterval)
+                    clearTimeout(timeout)
+                    resolve({ success: true, msg: `✅ Serialport server started on port ${Socket.ServerPort}` })
+                }
+            }, CHECK_INTERVAL_MS)
+
+            FWLink.PVIEventObserver.add((message, params) => {
+                const msg = params?.[0]
+                if (this.debugMode && msg?.includes("[SERIAL SERVER]")) {
+                    Log.warn(msg, Log.Colors.Orange.Orange)
+                }
+            }, "PVI.Sniffer.sniffer.PID_")
+        })
     }
 
     static killProcess() { Socket.IO.emit(Socket.Events.KILL_PROCESS) }
 
     static {
-        window.WebsocketSerialPort = Socket
-
         Socket.startObservers()
         Socket.startProcess()
-
-        FWLink.PVIEventObserver.add((message, params) => {
-            if (params[0] != undefined && Socket.DebugMode) {
-                Log.console(`${message} ${params[0]}`, Log.Colors.Purple.MediumPurple)
-            }
-        }, "PVI.Sniffer.sniffer.PID_")
+        window.WebsocketSerialPort = Socket
     }
 }
