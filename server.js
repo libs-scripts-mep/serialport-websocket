@@ -47,7 +47,12 @@ const INATIVITY_TIMEOUT = 10000
 
 const SERVER_PORT = 3000
 const http = createServer()
-const io = new Server(http, { cors: { origin: "*" } })
+const io = new Server(http, {
+  cors: { origin: "*" },
+  transports: ["websocket"],   // força uso de WebSocket
+  pingInterval: 5000,          // intervalo de pings
+  pingTimeout: 2000            // tempo máximo para resposta do pong
+})
 
 
 /**
@@ -79,24 +84,24 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.PORTLIST_REQ, async () => {
-    console.log("portlist request")
+    console.log("[SERIAL SERVER]portlist request")
     io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
   })
 
   socket.on(SocketEvents.OPENPORTS_REQ, async () => {
-    console.log("openports request")
+    console.log("[SERIAL SERVER]openports request")
     io.emit(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
   })
 
   socket.on(SocketEvents.ACTIVE_SLAVE_REQ, async () => {
-    console.log("active slaves request")
+    console.log("[SERIAL SERVER]active slaves request")
     io.emit(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves))
   })
   //#endregion GLOBAL
 
   //#region SERIAL
   socket.on(SocketEvents.OPEN_PORT_REQ, async (obj) => {
-    console.log("open request", obj)
+    console.log("[SERIAL SERVER]open request", obj)
 
     const evalPortInfo = evalProps(obj, 'portInfo', 'object')
     const evalConfig = evalProps(obj, 'config', 'object')
@@ -109,7 +114,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.CLOSE_PORT_REQ, async (tagName) => {
-    console.log("close request", tagName)
+    console.log("[SERIAL SERVER]close request", tagName)
     if (tagName == undefined || typeof tagName != "string") {
       io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incorretos:\ntagName: ${tagName}`)
     } else {
@@ -118,7 +123,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.WRITE_TO_REQ, async (obj) => {
-    console.log("write request", obj)
+    console.log("[SERIAL SERVER]write request", obj)
 
     const evalTagName = evalProps(obj, 'tagName', 'string')
     const evalMessage = evalProps(obj, 'message', 'object')
@@ -133,7 +138,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.READ_FROM_REQ, async (obj) => {
-    console.log("read request", obj)
+    console.log("[SERIAL SERVER]read request", obj)
 
     const evalTagName = evalProps(obj, 'tagName', 'string')
 
@@ -148,7 +153,7 @@ io.on('connection', (socket) => {
   //#region MODBUS
 
   socket.on(SocketEvents.OPEN_MODBUS_REQ, async (obj) => {
-    console.log("open mbd slave request", obj)
+    console.log("[SERIAL SERVER]open mbd slave request", obj)
 
     const evalTagName = evalProps(obj, 'tagName', 'string')
 
@@ -160,7 +165,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.CLOSE_MODBUS_REQ, async (obj) => {
-    console.log("close mbd slave request", obj)
+    console.log("[SERIAL SERVER]close mbd slave request", obj)
 
     const evalTagName = evalProps(obj, 'tagName', 'string')
 
@@ -172,7 +177,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.FREE_SLAVE_REQ, async (obj) => {
-    console.log("close mbd slave request", obj)
+    console.log("[SERIAL SERVER]close mbd slave request", obj)
 
     const evalTagName = evalProps(obj, 'tagName', 'string')
 
@@ -184,7 +189,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.CREATE_MODBUS_REQ, async (obj) => {
-    console.log("create mbd slave request", obj)
+    console.log("[SERIAL SERVER]create mbd slave request", obj)
 
     const evalPortInfo = evalProps(obj, 'portInfo', 'object')
     const evalConfig = evalProps(obj, 'config', 'object')
@@ -197,7 +202,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.SET_NODE_ADDRESS_REQ, async (obj) => {
-    console.log("set mdb node address", obj)
+    console.log("[SERIAL SERVER]set mdb node address", obj)
 
     const evalNodeAddress = evalProps(obj, 'nodeAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -210,7 +215,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.READ_INPUT_REGISTERS_REQ, async (obj) => {
-    console.log("read input regs", obj)
+    console.log("[SERIAL SERVER]read input regs", obj)
 
     const evalStartAddress = evalProps(obj, 'startAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -224,7 +229,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.READ_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("read holding regs", obj)
+    console.log("[SERIAL SERVER]read holding regs", obj)
 
     const evalStartAddress = evalProps(obj, 'startAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -238,7 +243,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.WRTIE_HOLDING_REGISTER_REQ, async (obj) => {
-    console.log("write reg", obj)
+    console.log("[SERIAL SERVER]write reg", obj)
 
     const evalStartAddress = evalProps(obj, 'startAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -252,7 +257,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.WRTIE_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("write regs", obj)
+    console.log("[SERIAL SERVER]write regs", obj)
 
     const evalStartAddress = evalProps(obj, 'startAddress', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -266,7 +271,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on(SocketEvents.READ_DEVICE_ID_REQ, async (obj) => {
-    console.log("read device id", obj)
+    console.log("[SERIAL SERVER]read device id", obj)
 
     const evalIdCode = evalProps(obj, 'idCode', 'number')
     const evalTagName = evalProps(obj, 'tagName', 'string')
@@ -281,7 +286,7 @@ io.on('connection', (socket) => {
   //#endregion MODBUS
 })
 
-http.listen(SERVER_PORT, () => { console.log(`Serial WebSocket executando em http://localhost:${SERVER_PORT}`) })
+http.listen(SERVER_PORT, () => { console.log(`[SERIAL SERVER]Serial WebSocket executando em http://localhost:${SERVER_PORT}`) })
 class Utils {
   static delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -303,7 +308,7 @@ async function watchForInactivity(io) {
       const exit = await shouldExit(io)
 
       if (exit) {
-        console.log("Encerrando servidor serialport-websocket por inatividade")
+        console.log("[SERIAL SERVER]Encerrando servidor serialport-websocket por inatividade")
         process.exit(0)
       }
     }
@@ -394,7 +399,7 @@ export class SerialPortManager {
                 resolve({ path: port.path, success: false, msg: error.message })
               } else {
                 this.openPorts.set(config.tagName, newPort)
-                console.log(`New port configured: '${config.tagName}' => ${port.path}`)
+                console.log(`[SERIAL SERVER]New port configured: '${config.tagName}' => ${port.path}`)
                 port.isOpen
                   ? resolve({ path: port.path, success: true, msg: `Opening ${port.path}: porta aberta com sucesso` })
                   : resolve(this.open(portInfo, config))
