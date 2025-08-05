@@ -23,7 +23,7 @@ npm uninstall @libs-scripts-mep/serialport-websocket
 Abra o terminal, e na pasta raíz do script, execute:
 
 ```
-npm uninstall @libs-scripts-mep/serialport-websocket
+npm update @libs-scripts-mep/serialport-websocket
 ```
 
 ## Como utilizar
