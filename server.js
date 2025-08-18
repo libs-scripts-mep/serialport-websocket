@@ -1,8 +1,19 @@
-import ModbusRTU from "modbus-serial"
-import { Server } from 'socket.io'
 import { SerialPort } from 'serialport'
-import { createServer } from 'node:http'
+import ModbusRTU from "modbus-serial"
+import { WebSocketServer } from 'ws'
+import { createServer } from 'http'
 
+// --- Configurações do Servidor ---
+const SERVER_PORT = 3000
+const INACTIVITY_TIMEOUT = 10000 // 10 segundos sem clientes = encerra
+
+let inactivityTimer = null
+
+// Servidor HTTP básico só para o handshake do WebSocket
+const server = createServer()
+const wss = new WebSocketServer({ server })
+
+// As classes e funções utilitárias permanecem as mesmas
 export class SocketEvents {
   static KILL_PROCESS = "kill-process"
   static PORTLIST_REQ = "port-list-req"
@@ -36,289 +47,272 @@ export class SocketEvents {
   static READ_INPUT_REGISTERS_RES = "read-mdb-input-regs-res"
   static READ_HOLDING_REGISTERS_REQ = "read-mdb-holding-regs-req"
   static READ_HOLDING_REGISTERS_RES = "read-mdb-holding-regs-res"
-  static WRTIE_HOLDING_REGISTER_REQ = "write-mdb-holding-reg-req"
-  static WRTIE_HOLDING_REGISTER_RES = "write-mdb-holding-reg-res"
-  static WRTIE_HOLDING_REGISTERS_REQ = "write-mdb-holding-regs-req"
-  static WRTIE_HOLDING_REGISTERS_RES = "write-mdb-holding-regs-res"
+  static WRITE_HOLDING_REGISTER_REQ = "write-mdb-holding-reg-req"
+  static WRITE_HOLDING_REGISTER_RES = "write-mdb-holding-reg-res"
+  static WRITE_HOLDING_REGISTERS_REQ = "write-mdb-holding-regs-req"
+  static WRITE_HOLDING_REGISTERS_RES = "write-mdb-holding-regs-res"
 }
 
-const CLIENT_MONITORING_INTERVAL = 500
-const INATIVITY_TIMEOUT = 10000
-
-const SERVER_PORT = 3000
-const http = createServer()
-const io = new Server(http, {
-  cors: { origin: "*" },
-  transports: ["websocket"],   // força uso de WebSocket
-  pingInterval: 5000,          // intervalo de pings
-  pingTimeout: 2000            // tempo máximo para resposta do pong
-})
-
-
-/**
- * Validates the type of a property in an object.
- *
- * @param {Object} obj - The object to evaluate.
- * @param {string} propName - The name of the property to validate.
- * @param {string} expectedType - The expected data type of the property.
- * @return {{success: boolean, msg: string}} An object indicating the success of the validation and a message.
- */
+// Funções utilitárias mantidas sem alteração
 function evalProps(obj, propName, expectedType) {
   if (!propName in obj) { return { success: false, msg: `Propriedade ${propName} não informada no objeto passado` } }
   if (obj[propName] == null || obj[propName] == undefined) { return { success: false, msg: `Propriedade ${propName} possui valor inválido: ${obj[propName]}` } }
-
   const prop = obj[propName]
   const propType = typeof prop
-
   if (propType != expectedType) { return { success: false, msg: `Propriedade ${propName} é do tipo ${propType}. Precisa ser do tipo: ${expectedType}` } }
   return { success: true, msg: `Propriedade ${propName} validada com sucesso` }
 }
-
 function mapToObject(map) { return Object.fromEntries(map.entries()) }
 
-io.on('connection', (socket) => {
+// Lógica principal do servidor WebSocket
+wss.on('connection', (socket) => {
+  console.log("[SERIAL SERVER]🟢 client connected")
 
-  //#region GLOBAL
-  socket.on(SocketEvents.KILL_PROCESS, () => {
-    process.exit(10)
-  })
+  // Ao receber uma conexão, limpa o timer de inatividade se ele estiver ativo
+  clearTimeout(inactivityTimer)
 
-  socket.on(SocketEvents.PORTLIST_REQ, async () => {
-    console.log("[SERIAL SERVER]portlist request")
-    io.emit(SocketEvents.PORTLIST_RES, await SerialPortManager.portListUpdate())
-  })
+  // Lógica para quando um cliente se desconecta
+  socket.on('close', () => {
+    console.log("[SERIAL SERVER]🔴 client disconnected")
 
-  socket.on(SocketEvents.OPENPORTS_REQ, async () => {
-    console.log("[SERIAL SERVER]openports request")
-    io.emit(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
-  })
-
-  socket.on(SocketEvents.ACTIVE_SLAVE_REQ, async () => {
-    console.log("[SERIAL SERVER]active slaves request")
-    io.emit(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves))
-  })
-  //#endregion GLOBAL
-
-  //#region SERIAL
-  socket.on(SocketEvents.OPEN_PORT_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]open request", obj)
-
-    const evalPortInfo = evalProps(obj, 'portInfo', 'object')
-    const evalConfig = evalProps(obj, 'config', 'object')
-
-    if (!evalPortInfo.success || !evalConfig.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalPortInfo.msg}\n${evalConfig.msg}`)
-    } else {
-      io.emit(SocketEvents.OPEN_PORT_RES, await SerialPortManager.open(obj.portInfo, obj.config))
+    // Inicia o timer de inatividade se não houver mais clientes
+    if (wss.clients.size === 0) {
+      inactivityTimer = setTimeout(() => {
+        if (wss.clients.size === 0) {
+          console.log("[SERVER] Encerrando servidor por inatividade")
+          process.exit(0)
+        }
+      }, INACTIVITY_TIMEOUT)
     }
   })
 
-  socket.on(SocketEvents.CLOSE_PORT_REQ, async (tagName) => {
-    console.log("[SERIAL SERVER]close request", tagName)
-    if (tagName == undefined || typeof tagName != "string") {
-      io.emit(SocketEvents.SERVER_ERROR, `Parâmetros incorretos:\ntagName: ${tagName}`)
-    } else {
-      io.emit(SocketEvents.CLOSE_PORT_RES, await SerialPortManager.close(tagName))
+  // Lógica para lidar com as mensagens recebidas
+  socket.on('message', async (message) => {
+    const { event, data } = JSON.parse(message)
+
+    // As respostas agora são enviadas usando socket.send()
+    const sendResponse = (responseEvent, responseData) => {
+      socket.send(JSON.stringify({ event: responseEvent, data: responseData }))
+    }
+
+    switch (event) {
+      case SocketEvents.KILL_PROCESS:
+        process.exit(10)
+        break
+
+      case SocketEvents.PORTLIST_REQ:
+        console.log("[SERIAL SERVER]portlist request")
+        const portList = await SerialPortManager.portListUpdate()
+        sendResponse(SocketEvents.PORTLIST_RES, portList)
+        break
+
+      case SocketEvents.OPENPORTS_REQ:
+        console.log("[SERIAL SERVER]openports request")
+        sendResponse(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
+        break
+
+      case SocketEvents.ACTIVE_SLAVE_REQ:
+        console.log("[SERIAL SERVER]active slaves request")
+        sendResponse(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves))
+        break
+
+      case SocketEvents.OPEN_PORT_REQ:
+        console.log("[SERIAL SERVER]open request", data)
+        const evalPortInfo = evalProps(data, 'portInfo', 'object')
+        const evalConfig = evalProps(data, 'config', 'object')
+
+        if (!evalPortInfo.success || !evalConfig.success) {
+          sendResponse(SocketEvents.OPEN_PORT_RES, { success: false, msg: `${evalPortInfo.msg}\n${evalConfig.msg}`, path: "Unknown" })
+        } else {
+          const result = await SerialPortManager.open(data.portInfo, data.config)
+          sendResponse(SocketEvents.OPEN_PORT_RES, result)
+        }
+        break
+
+      case SocketEvents.CLOSE_PORT_REQ:
+        console.log("[SERIAL SERVER]close request", data)
+        const tagName = data
+        if (tagName == undefined || typeof tagName != "string") {
+          sendResponse(SocketEvents.CLOSE_PORT_RES, { success: false, msg: `Parâmetros incorretos:\ntagName: ${tagName}`, path: "Unknown" })
+        } else {
+          const result = await SerialPortManager.close(tagName)
+          sendResponse(SocketEvents.CLOSE_PORT_RES, result)
+        }
+        break
+
+      case SocketEvents.WRITE_TO_REQ:
+        console.log("[SERIAL SERVER]write request", data)
+        const evalTagName = evalProps(data, 'tagName', 'string')
+        const evalMessage = evalProps(data, 'message', 'object')
+        const evalContentAsArray = evalProps(data.message, 'content', 'object')
+        const evalContentAsString = evalProps(data.message, 'content', 'string')
+
+        if (!evalTagName.success || !evalMessage.success || (!evalContentAsString.success && !evalContentAsArray.success)) {
+          sendResponse(SocketEvents.WRITE_TO_RES, { success: false, msg: `${evalTagName.msg}\n${evalMessage.msg}\n${evalContentAsString.msg}`, path: "Unknown" })
+        } else {
+          const result = await SerialPortManager.write(data.tagName, data.message)
+          sendResponse(SocketEvents.WRITE_TO_RES, result)
+        }
+        break
+
+      case SocketEvents.READ_FROM_REQ:
+        console.log("[SERIAL SERVER]read request", data)
+        const evalTagNameRead = evalProps(data, 'tagName', 'string')
+        if (!evalTagNameRead.success) {
+          sendResponse(SocketEvents.READ_FROM_RES, { success: false, msg: evalTagNameRead.msg, path: "Unknown" })
+        } else {
+          const result = await SerialPortManager.read(data.tagName, data.encoding)
+          sendResponse(SocketEvents.READ_FROM_RES, result)
+        }
+        break
+
+      case SocketEvents.OPEN_MODBUS_REQ:
+        console.log("[SERIAL SERVER]open mbd slave request", data)
+        const evalTagNameOpenMdb = evalProps(data, 'tagName', 'string')
+
+        if (!evalTagNameOpenMdb.success) {
+          sendResponse(SocketEvents.OPEN_MODBUS_RES, { success: false, msg: `${evalTagNameOpenMdb.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.open(data.tagName)
+          sendResponse(SocketEvents.OPEN_MODBUS_RES, result)
+        }
+        break
+
+      case SocketEvents.CLOSE_MODBUS_REQ:
+        console.log("[SERIAL SERVER]close mbd slave request", data)
+        const evalTagNameCloseMdb = evalProps(data, 'tagName', 'string')
+
+        if (!evalTagNameCloseMdb.success) {
+          sendResponse(SocketEvents.CLOSE_MODBUS_RES, { success: false, msg: `${evalTagNameCloseMdb.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.close(data.tagName)
+          sendResponse(SocketEvents.CLOSE_MODBUS_RES, result)
+        }
+        break
+
+      case SocketEvents.FREE_SLAVE_REQ:
+        console.log("[SERIAL SERVER]free mdb slave request", data)
+        const evalTagNameFreeSlave = evalProps(data, 'tagName', 'string')
+
+        if (!evalTagNameFreeSlave.success) {
+          sendResponse(SocketEvents.FREE_SLAVE_RES, { success: false, msg: `${evalTagNameFreeSlave.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.freeSlave(data.tagName)
+          sendResponse(SocketEvents.FREE_SLAVE_RES, result)
+        }
+        break
+
+      case SocketEvents.CREATE_MODBUS_REQ:
+        console.log("[SERIAL SERVER]create mbd slave request", data)
+        const evalPortInfoCreate = evalProps(data, 'portInfo', 'object')
+        const evalConfigCreate = evalProps(data, 'config', 'object')
+
+        if (!evalPortInfoCreate.success || !evalConfigCreate.success) {
+          sendResponse(SocketEvents.CREATE_MODBUS_RES, { success: false, msg: `${evalPortInfoCreate.msg}\n${evalConfigCreate.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.create(data.portInfo, data.config)
+          sendResponse(SocketEvents.CREATE_MODBUS_RES, result)
+        }
+        break
+
+      case SocketEvents.SET_NODE_ADDRESS_REQ:
+        console.log("[SERIAL SERVER]set mdb node address", data)
+        const evalNodeAddress = evalProps(data, 'nodeAddress', 'number')
+        const evalTagNameSetAddr = evalProps(data, 'tagName', 'string')
+
+        if (!evalNodeAddress.success || !evalTagNameSetAddr.success) {
+          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, { success: false, msg: `${evalNodeAddress.msg}\n${evalTagNameSetAddr.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.setNodeAddress(data.nodeAddress, data.tagName)
+          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, result)
+        }
+        break
+
+      case SocketEvents.READ_INPUT_REGISTERS_REQ:
+        console.log("[SERIAL SERVER]read input regs", data)
+        const evalStartAddressInput = evalProps(data, 'startAddress', 'number')
+        const evalTagNameInput = evalProps(data, 'tagName', 'string')
+        const evalQtyInput = evalProps(data, 'qty', 'number')
+
+        if (!evalStartAddressInput.success || !evalTagNameInput.success || !evalQtyInput.success) {
+          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, { success: false, msg: `${evalStartAddressInput.msg}\n${evalTagNameInput.msg}\n${evalQtyInput.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.readInputRegisters(data.tagName, data.startAddress, data.qty)
+          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, result)
+        }
+        break
+
+      case SocketEvents.READ_HOLDING_REGISTERS_REQ:
+        console.log("[SERIAL SERVER]read holding regs", data)
+        const evalStartAddressHolding = evalProps(data, 'startAddress', 'number')
+        const evalTagNameHolding = evalProps(data, 'tagName', 'string')
+        const evalQtyHolding = evalProps(data, 'qty', 'number')
+
+        if (!evalStartAddressHolding.success || !evalTagNameHolding.success || !evalQtyHolding.success) {
+          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressHolding.msg}\n${evalTagNameHolding.msg}\n${evalQtyHolding.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.readHoldingRegisters(data.tagName, data.startAddress, data.qty)
+          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, result)
+        }
+        break
+
+      case SocketEvents.WRITE_HOLDING_REGISTER_REQ:
+        console.log("[SERIAL SERVER]write reg", data)
+        const evalStartAddressWriteReg = evalProps(data, 'startAddress', 'number')
+        const evalTagNameWriteReg = evalProps(data, 'tagName', 'string')
+        const evalValueWriteReg = evalProps(data, 'value', 'number')
+
+        if (!evalStartAddressWriteReg.success || !evalTagNameWriteReg.success || !evalValueWriteReg.success) {
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, { success: false, msg: `${evalStartAddressWriteReg.msg}\n${evalTagNameWriteReg.msg}\n${evalValueWriteReg.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.writeHoldingRegister(data.tagName, data.startAddress, data.value)
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, result)
+        }
+        break
+
+      case SocketEvents.WRITE_HOLDING_REGISTERS_REQ:
+        console.log("[SERIAL SERVER]write regs", data)
+        const evalStartAddressWriteRegs = evalProps(data, 'startAddress', 'number')
+        const evalTagNameWriteRegs = evalProps(data, 'tagName', 'string')
+        const evalValuesWriteRegs = evalProps(data, 'arrValues', 'object')
+
+        if (!evalStartAddressWriteRegs.success || !evalTagNameWriteRegs.success || !evalValuesWriteRegs.success) {
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressWriteRegs.msg}\n${evalTagNameWriteRegs.msg}\n${evalValuesWriteRegs.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.writeHoldingRegisters(data.tagName, data.startAddress, data.arrValues)
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, result)
+        }
+        break
+
+      case SocketEvents.READ_DEVICE_ID_REQ:
+        console.log("[SERIAL SERVER]read device id", data)
+        const evalIdCode = evalProps(data, 'idCode', 'number')
+        const evalTagNameReadId = evalProps(data, 'tagName', 'string')
+        const evalObjectId = evalProps(data, 'objectId', 'number')
+
+        if (!evalIdCode.success || !evalTagNameReadId.success || !evalObjectId.success) {
+          sendResponse(SocketEvents.READ_DEVICE_ID_RES, { success: false, msg: `${evalIdCode.msg}\n${evalTagNameReadId.msg}\n${evalObjectId.msg}`, path: "Unknown" })
+        } else {
+          const result = await ModbusDeviceManager.readDeviceID(data.tagName, data.idCode, data.objectId)
+          sendResponse(SocketEvents.READ_DEVICE_ID_RES, result)
+        }
+        break
+
+      default:
+        console.log(`[SERIAL SERVER] evento desconhecido: ${event}`)
+        sendResponse(SocketEvents.SERVER_ERROR, `Evento desconhecido: ${event}`)
     }
   })
-
-  socket.on(SocketEvents.WRITE_TO_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]write request", obj)
-
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalMessage = evalProps(obj, 'message', 'object')
-    const evalContentAsArray = evalProps(obj.message, 'content', 'object')
-    const evalContentAsString = evalProps(obj.message, 'content', 'string')
-
-    if (!evalTagName.success || !evalMessage.success || (!evalContentAsString.success && !evalContentAsArray.success)) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}\n${evalMessage.msg}\n${evalContentAsString.msg}`)
-    } else {
-      io.emit(SocketEvents.WRITE_TO_RES, await SerialPortManager.write(obj.tagName, obj.message))
-    }
-  })
-
-  socket.on(SocketEvents.READ_FROM_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]read request", obj)
-
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-
-    if (!evalTagName.success) {
-      io.emit(SocketEvents.SERVER_ERROR, evalTagName.msg)
-    } else {
-      io.emit(SocketEvents.READ_FROM_RES, await SerialPortManager.read(obj.tagName, obj.encoding))
-    }
-  })
-  //#endregion SERIAL
-
-  //#region MODBUS
-
-  socket.on(SocketEvents.OPEN_MODBUS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]open mbd slave request", obj)
-
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-
-    if (!evalTagName.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
-    } else {
-      io.emit(SocketEvents.OPEN_MODBUS_RES, await ModbusDeviceManager.open(obj.tagName))
-    }
-  })
-
-  socket.on(SocketEvents.CLOSE_MODBUS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]close mbd slave request", obj)
-
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-
-    if (!evalTagName.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
-    } else {
-      io.emit(SocketEvents.CLOSE_MODBUS_RES, await ModbusDeviceManager.close(obj.tagName))
-    }
-  })
-
-  socket.on(SocketEvents.FREE_SLAVE_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]close mbd slave request", obj)
-
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-
-    if (!evalTagName.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalTagName.msg}`)
-    } else {
-      io.emit(SocketEvents.FREE_SLAVE_RES, await ModbusDeviceManager.freeSlave(obj.tagName))
-    }
-  })
-
-  socket.on(SocketEvents.CREATE_MODBUS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]create mbd slave request", obj)
-
-    const evalPortInfo = evalProps(obj, 'portInfo', 'object')
-    const evalConfig = evalProps(obj, 'config', 'object')
-
-    if (!evalPortInfo.success || !evalConfig.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalPortInfo.msg}\n${evalConfig.msg}`)
-    } else {
-      io.emit(SocketEvents.CREATE_MODBUS_RES, await ModbusDeviceManager.create(obj.portInfo, obj.config))
-    }
-  })
-
-  socket.on(SocketEvents.SET_NODE_ADDRESS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]set mdb node address", obj)
-
-    const evalNodeAddress = evalProps(obj, 'nodeAddress', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-
-    if (!evalNodeAddress.success || !evalTagName.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalNodeAddress.msg}\n${evalTagName.msg}`)
-    } else {
-      io.emit(SocketEvents.SET_NODE_ADDRESS_RES, await ModbusDeviceManager.setNodeAddress(obj.nodeAddress, obj.tagName))
-    }
-  })
-
-  socket.on(SocketEvents.READ_INPUT_REGISTERS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]read input regs", obj)
-
-    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalQty = evalProps(obj, 'qty', 'number')
-
-    if (!evalStartAddress.success || !evalTagName.success || !evalQty.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalQty.msg}`)
-    } else {
-      io.emit(SocketEvents.READ_INPUT_REGISTERS_RES, await ModbusDeviceManager.readInputRegisters(obj.tagName, obj.startAddress, obj.qty))
-    }
-  })
-
-  socket.on(SocketEvents.READ_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]read holding regs", obj)
-
-    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalQty = evalProps(obj, 'qty', 'number')
-
-    if (!evalStartAddress.success || !evalTagName.success || !evalQty.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalQty.msg}`)
-    } else {
-      io.emit(SocketEvents.READ_HOLDING_REGISTERS_RES, await ModbusDeviceManager.readHoldingRegisters(obj.tagName, obj.startAddress, obj.qty))
-    }
-  })
-
-  socket.on(SocketEvents.WRTIE_HOLDING_REGISTER_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]write reg", obj)
-
-    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalValue = evalProps(obj, 'value', 'number')
-
-    if (!evalStartAddress.success || !evalTagName.success || !evalValue.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalValue.msg}`)
-    } else {
-      io.emit(SocketEvents.WRTIE_HOLDING_REGISTER_RES, await ModbusDeviceManager.writeHoldingRegister(obj.tagName, obj.startAddress, obj.value))
-    }
-  })
-
-  socket.on(SocketEvents.WRTIE_HOLDING_REGISTERS_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]write regs", obj)
-
-    const evalStartAddress = evalProps(obj, 'startAddress', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalValues = evalProps(obj, 'arrValues', 'object')
-
-    if (!evalStartAddress.success || !evalTagName.success || !evalValues.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalStartAddress.msg}\n${evalTagName.msg}\n${evalValues.msg}`)
-    } else {
-      io.emit(SocketEvents.WRTIE_HOLDING_REGISTERS_RES, await ModbusDeviceManager.writeHoldingRegisters(obj.tagName, obj.startAddress, obj.arrValues))
-    }
-  })
-
-  socket.on(SocketEvents.READ_DEVICE_ID_REQ, async (obj) => {
-    console.log("[SERIAL SERVER]read device id", obj)
-
-    const evalIdCode = evalProps(obj, 'idCode', 'number')
-    const evalTagName = evalProps(obj, 'tagName', 'string')
-    const evalObjectId = evalProps(obj, 'objectId', 'number')
-
-    if (!evalIdCode.success || !evalTagName.success || !evalObjectId.success) {
-      io.emit(SocketEvents.SERVER_ERROR, `${evalIdCode.msg}\n${evalTagName.msg}\n${evalObjectId.msg}`)
-    } else {
-      io.emit(SocketEvents.READ_DEVICE_ID_RES, await ModbusDeviceManager.readDeviceID(obj.tagName, obj.idCode, obj.objectId))
-    }
-  })
-  //#endregion MODBUS
 })
 
-http.listen(SERVER_PORT, () => { console.log(`[SERIAL SERVER]Serial WebSocket executando em http://localhost:${SERVER_PORT}`) })
+// Inicia o servidor na porta especificada
+server.listen(SERVER_PORT, () => {
+  console.log(`[SERIAL SERVER]Serial WebSocket executando em http://localhost:${SERVER_PORT}`)
+})
+
 class Utils {
   static delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
-
-async function shouldExit(io) {
-  const start = Date.now()
-
-  while (Date.now() - start < INATIVITY_TIMEOUT) {
-    if (io.engine.clientsCount > 0) return false
-    await Utils.delay(CLIENT_MONITORING_INTERVAL)
-  }
-
-  return true
-}
-
-async function watchForInactivity(io) {
-  while (true) {
-    if (io.engine.clientsCount === 0) {
-      const exit = await shouldExit(io)
-
-      if (exit) {
-        console.log("[SERIAL SERVER]Encerrando servidor serialport-websocket por inatividade")
-        process.exit(0)
-      }
-    }
-
-    await Utils.delay(CLIENT_MONITORING_INTERVAL)
-  }
-}
-
-// Chamada principal
-watchForInactivity(io)
 
 export class SerialPortManager {
 
@@ -443,7 +437,7 @@ export class SerialPortManager {
 
   /**
    * A function to write data to a port if it is open and writable.
-   * 
+   *
    * @param {string} tagName - The tag name of the port.
    * @param {{ content: string | Array<number>, encoding: BufferEncoding}} message - The message object containing content and encoding.
    * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing path, success status, and a message.
