@@ -37,12 +37,4 @@ As demais informações e instruções estarão disponíveis via `JSDocs`.
 
 > # ⚠️ 
 > O servidor será gerenciado automaticamente ao importar o client (`Socket`)
-> 
-> Para que o server não seja derrubado desnecessariamente, é recomendado que os comandos `location.reload()` do seu script, seja precedido do comando `window.onbeforeunload = () => { }`, exemplo:
-> ```js 
-> function reload() {
->   window.onbeforeunload = () => { }
->   location.reload()
->}
-> ```
 
