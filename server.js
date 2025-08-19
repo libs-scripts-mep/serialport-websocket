@@ -88,11 +88,11 @@ wss.on('connection', (socket) => {
 
   // Lógica para lidar com as mensagens recebidas
   socket.on('message', async (message) => {
-    const { event, data } = JSON.parse(message)
+    const { event, data, token } = JSON.parse(message)
 
     // As respostas agora são enviadas usando socket.send()
-    const sendResponse = (responseEvent, responseData) => {
-      socket.send(JSON.stringify({ event: responseEvent, data: responseData }))
+    const sendResponse = (responseEvent, responseData, token) => {
+      socket.send(JSON.stringify({ event: responseEvent, data: responseData, token }))
     }
 
     switch (event) {
@@ -103,17 +103,17 @@ wss.on('connection', (socket) => {
       case SocketEvents.PORTLIST_REQ:
         console.log("[SERIAL SERVER]portlist request")
         const portList = await SerialPortManager.portListUpdate()
-        sendResponse(SocketEvents.PORTLIST_RES, portList)
+        sendResponse(SocketEvents.PORTLIST_RES, portList, token)
         break
 
       case SocketEvents.OPENPORTS_REQ:
         console.log("[SERIAL SERVER]openports request")
-        sendResponse(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts))
+        sendResponse(SocketEvents.OPENPORTS_RES, mapToObject(SerialPortManager.openPorts), token)
         break
 
       case SocketEvents.ACTIVE_SLAVE_REQ:
         console.log("[SERIAL SERVER]active slaves request")
-        sendResponse(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves))
+        sendResponse(SocketEvents.ACTIVE_SLAVE_RES, mapToObject(ModbusDeviceManager.slaves), token)
         break
 
       case SocketEvents.OPEN_PORT_REQ:
@@ -122,10 +122,10 @@ wss.on('connection', (socket) => {
         const evalConfig = evalProps(data, 'config', 'object')
 
         if (!evalPortInfo.success || !evalConfig.success) {
-          sendResponse(SocketEvents.OPEN_PORT_RES, { success: false, msg: `${evalPortInfo.msg}\n${evalConfig.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.OPEN_PORT_RES, { success: false, msg: `${evalPortInfo.msg}\n${evalConfig.msg}`, path: "Unknown" }, token)
         } else {
           const result = await SerialPortManager.open(data.portInfo, data.config)
-          sendResponse(SocketEvents.OPEN_PORT_RES, result)
+          sendResponse(SocketEvents.OPEN_PORT_RES, result, token)
         }
         break
 
@@ -133,10 +133,10 @@ wss.on('connection', (socket) => {
         console.log("[SERIAL SERVER]close request", data)
         const tagName = data
         if (tagName == undefined || typeof tagName != "string") {
-          sendResponse(SocketEvents.CLOSE_PORT_RES, { success: false, msg: `Parâmetros incorretos:\ntagName: ${tagName}`, path: "Unknown" })
+          sendResponse(SocketEvents.CLOSE_PORT_RES, { success: false, msg: `Parâmetros incorretos:\ntagName: ${tagName}`, path: "Unknown" }, token)
         } else {
           const result = await SerialPortManager.close(tagName)
-          sendResponse(SocketEvents.CLOSE_PORT_RES, result)
+          sendResponse(SocketEvents.CLOSE_PORT_RES, result, token)
         }
         break
 
@@ -148,10 +148,10 @@ wss.on('connection', (socket) => {
         const evalContentAsString = evalProps(data.message, 'content', 'string')
 
         if (!evalTagName.success || !evalMessage.success || (!evalContentAsString.success && !evalContentAsArray.success)) {
-          sendResponse(SocketEvents.WRITE_TO_RES, { success: false, msg: `${evalTagName.msg}\n${evalMessage.msg}\n${evalContentAsString.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.WRITE_TO_RES, { success: false, msg: `${evalTagName.msg}\n${evalMessage.msg}\n${evalContentAsString.msg}`, path: "Unknown" }, token)
         } else {
           const result = await SerialPortManager.write(data.tagName, data.message)
-          sendResponse(SocketEvents.WRITE_TO_RES, result)
+          sendResponse(SocketEvents.WRITE_TO_RES, result, token)
         }
         break
 
@@ -159,10 +159,10 @@ wss.on('connection', (socket) => {
         console.log("[SERIAL SERVER]read request", data)
         const evalTagNameRead = evalProps(data, 'tagName', 'string')
         if (!evalTagNameRead.success) {
-          sendResponse(SocketEvents.READ_FROM_RES, { success: false, msg: evalTagNameRead.msg, path: "Unknown" })
+          sendResponse(SocketEvents.READ_FROM_RES, { success: false, msg: evalTagNameRead.msg, path: "Unknown" }, token)
         } else {
           const result = await SerialPortManager.read(data.tagName, data.encoding)
-          sendResponse(SocketEvents.READ_FROM_RES, result)
+          sendResponse(SocketEvents.READ_FROM_RES, result, token)
         }
         break
 
@@ -171,10 +171,10 @@ wss.on('connection', (socket) => {
         const evalTagNameOpenMdb = evalProps(data, 'tagName', 'string')
 
         if (!evalTagNameOpenMdb.success) {
-          sendResponse(SocketEvents.OPEN_MODBUS_RES, { success: false, msg: `${evalTagNameOpenMdb.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.OPEN_MODBUS_RES, { success: false, msg: `${evalTagNameOpenMdb.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.open(data.tagName)
-          sendResponse(SocketEvents.OPEN_MODBUS_RES, result)
+          sendResponse(SocketEvents.OPEN_MODBUS_RES, result, token)
         }
         break
 
@@ -183,10 +183,10 @@ wss.on('connection', (socket) => {
         const evalTagNameCloseMdb = evalProps(data, 'tagName', 'string')
 
         if (!evalTagNameCloseMdb.success) {
-          sendResponse(SocketEvents.CLOSE_MODBUS_RES, { success: false, msg: `${evalTagNameCloseMdb.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.CLOSE_MODBUS_RES, { success: false, msg: `${evalTagNameCloseMdb.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.close(data.tagName)
-          sendResponse(SocketEvents.CLOSE_MODBUS_RES, result)
+          sendResponse(SocketEvents.CLOSE_MODBUS_RES, result, token)
         }
         break
 
@@ -195,10 +195,10 @@ wss.on('connection', (socket) => {
         const evalTagNameFreeSlave = evalProps(data, 'tagName', 'string')
 
         if (!evalTagNameFreeSlave.success) {
-          sendResponse(SocketEvents.FREE_SLAVE_RES, { success: false, msg: `${evalTagNameFreeSlave.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.FREE_SLAVE_RES, { success: false, msg: `${evalTagNameFreeSlave.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.freeSlave(data.tagName)
-          sendResponse(SocketEvents.FREE_SLAVE_RES, result)
+          sendResponse(SocketEvents.FREE_SLAVE_RES, result, token)
         }
         break
 
@@ -208,10 +208,10 @@ wss.on('connection', (socket) => {
         const evalConfigCreate = evalProps(data, 'config', 'object')
 
         if (!evalPortInfoCreate.success || !evalConfigCreate.success) {
-          sendResponse(SocketEvents.CREATE_MODBUS_RES, { success: false, msg: `${evalPortInfoCreate.msg}\n${evalConfigCreate.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.CREATE_MODBUS_RES, { success: false, msg: `${evalPortInfoCreate.msg}\n${evalConfigCreate.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.create(data.portInfo, data.config)
-          sendResponse(SocketEvents.CREATE_MODBUS_RES, result)
+          sendResponse(SocketEvents.CREATE_MODBUS_RES, result, token)
         }
         break
 
@@ -221,10 +221,10 @@ wss.on('connection', (socket) => {
         const evalTagNameSetAddr = evalProps(data, 'tagName', 'string')
 
         if (!evalNodeAddress.success || !evalTagNameSetAddr.success) {
-          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, { success: false, msg: `${evalNodeAddress.msg}\n${evalTagNameSetAddr.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, { success: false, msg: `${evalNodeAddress.msg}\n${evalTagNameSetAddr.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.setNodeAddress(data.nodeAddress, data.tagName)
-          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, result)
+          sendResponse(SocketEvents.SET_NODE_ADDRESS_RES, result, token)
         }
         break
 
@@ -235,10 +235,10 @@ wss.on('connection', (socket) => {
         const evalQtyInput = evalProps(data, 'qty', 'number')
 
         if (!evalStartAddressInput.success || !evalTagNameInput.success || !evalQtyInput.success) {
-          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, { success: false, msg: `${evalStartAddressInput.msg}\n${evalTagNameInput.msg}\n${evalQtyInput.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, { success: false, msg: `${evalStartAddressInput.msg}\n${evalTagNameInput.msg}\n${evalQtyInput.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.readInputRegisters(data.tagName, data.startAddress, data.qty)
-          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, result)
+          sendResponse(SocketEvents.READ_INPUT_REGISTERS_RES, result, token)
         }
         break
 
@@ -249,10 +249,10 @@ wss.on('connection', (socket) => {
         const evalQtyHolding = evalProps(data, 'qty', 'number')
 
         if (!evalStartAddressHolding.success || !evalTagNameHolding.success || !evalQtyHolding.success) {
-          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressHolding.msg}\n${evalTagNameHolding.msg}\n${evalQtyHolding.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressHolding.msg}\n${evalTagNameHolding.msg}\n${evalQtyHolding.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.readHoldingRegisters(data.tagName, data.startAddress, data.qty)
-          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, result)
+          sendResponse(SocketEvents.READ_HOLDING_REGISTERS_RES, result, token)
         }
         break
 
@@ -263,10 +263,10 @@ wss.on('connection', (socket) => {
         const evalValueWriteReg = evalProps(data, 'value', 'number')
 
         if (!evalStartAddressWriteReg.success || !evalTagNameWriteReg.success || !evalValueWriteReg.success) {
-          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, { success: false, msg: `${evalStartAddressWriteReg.msg}\n${evalTagNameWriteReg.msg}\n${evalValueWriteReg.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, { success: false, msg: `${evalStartAddressWriteReg.msg}\n${evalTagNameWriteReg.msg}\n${evalValueWriteReg.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.writeHoldingRegister(data.tagName, data.startAddress, data.value)
-          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, result)
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTER_RES, result, token)
         }
         break
 
@@ -277,10 +277,10 @@ wss.on('connection', (socket) => {
         const evalValuesWriteRegs = evalProps(data, 'arrValues', 'object')
 
         if (!evalStartAddressWriteRegs.success || !evalTagNameWriteRegs.success || !evalValuesWriteRegs.success) {
-          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressWriteRegs.msg}\n${evalTagNameWriteRegs.msg}\n${evalValuesWriteRegs.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, { success: false, msg: `${evalStartAddressWriteRegs.msg}\n${evalTagNameWriteRegs.msg}\n${evalValuesWriteRegs.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.writeHoldingRegisters(data.tagName, data.startAddress, data.arrValues)
-          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, result)
+          sendResponse(SocketEvents.WRITE_HOLDING_REGISTERS_RES, result, token)
         }
         break
 
@@ -291,16 +291,16 @@ wss.on('connection', (socket) => {
         const evalObjectId = evalProps(data, 'objectId', 'number')
 
         if (!evalIdCode.success || !evalTagNameReadId.success || !evalObjectId.success) {
-          sendResponse(SocketEvents.READ_DEVICE_ID_RES, { success: false, msg: `${evalIdCode.msg}\n${evalTagNameReadId.msg}\n${evalObjectId.msg}`, path: "Unknown" })
+          sendResponse(SocketEvents.READ_DEVICE_ID_RES, { success: false, msg: `${evalIdCode.msg}\n${evalTagNameReadId.msg}\n${evalObjectId.msg}`, path: "Unknown" }, token)
         } else {
           const result = await ModbusDeviceManager.readDeviceID(data.tagName, data.idCode, data.objectId)
-          sendResponse(SocketEvents.READ_DEVICE_ID_RES, result)
+          sendResponse(SocketEvents.READ_DEVICE_ID_RES, result, token)
         }
         break
 
       default:
         console.log(`[SERIAL SERVER] evento desconhecido: ${event}`)
-        sendResponse(SocketEvents.SERVER_ERROR, `Evento desconhecido: ${event}`)
+        sendResponse(SocketEvents.SERVER_ERROR, `Evento desconhecido: ${event}`, token)
     }
   })
 })
@@ -505,38 +505,41 @@ export class ModbusDeviceManager {
   }
 
 
-  /**
-   * Creates a new Modbus slave.
-   *
-   * @param {Object} portInfo - Information about the port.
-   * @param {{ baudRate: number, parity: string, tagName: string }} config - Configuration options.
-   * @return {Promise<{path: string, success: boolean, msg: string}>} A Promise that resolves with an object containing the path, success status, and a message.
-   */
-  static create(portInfo, config) {
+  static async create(portInfo, config) {
     return new Promise(async (resolve) => {
+      const { tagName, baudRate, parity } = config
 
-      if (!this.slaves.has(config.tagName)) {
-
-        if (SerialPortManager.openPorts.has(config.tagName)) {
-          await SerialPortManager.close(config.tagName)
-          SerialPortManager.openPorts.delete(config.tagName)
-        }
-
-        const slave = new ModbusRTU()
-        this.slaves.set(config.tagName, slave)
-        resolve(this.create(portInfo, config))
-
-      } else {
-        try {
-          const slave = this.slaves.get(config.tagName)
-          if (!slave.isOpen) {
-            slave.connectRTUBuffered(portInfo.path, { baudRate: config.baudRate, parity: config.parity })
+      // Se o slave já existe, verificar e abrir a porta se necessário
+      if (this.slaves.has(tagName)) {
+        const slave = this.slaves.get(tagName)
+        if (!slave.isOpen) {
+          try {
+            await slave.connectRTUBuffered(portInfo.path, { baudRate, parity })
+            resolve({ path: portInfo.path, success: true, msg: `Modbus ${tagName} created and port opened` })
+          } catch (error) {
+            resolve({ path: portInfo.path, success: false, msg: `Failed to open Modbus ${tagName}: ${error.message}` })
           }
-          resolve({ path: portInfo.path, success: true, msg: "sucesso ao criar slave" })
-        } catch (error) {
-          resolve({ path: portInfo.path, success: false, msg: `falha ao criar slave: ${error.message}` })
+        } else {
+          resolve({ path: portInfo.path, success: true, msg: `Modbus ${tagName} already created and open` })
         }
+        return
+      }
 
+      // Fechar a porta serial se já estiver aberta
+      if (SerialPortManager.openPorts.has(tagName)) {
+        await SerialPortManager.close(tagName)
+        SerialPortManager.openPorts.delete(tagName)
+      }
+
+      // Criar novo slave Modbus e abrir a porta
+      try {
+        const slave = new ModbusRTU()
+        this.slaves.set(tagName, slave)
+        await slave.connectRTUBuffered(portInfo.path, { baudRate, parity })
+        resolve({ path: portInfo.path, success: true, msg: `Modbus ${tagName} created and port opened` })
+      } catch (error) {
+        this.slaves.delete(tagName) // Limpar em caso de erro
+        resolve({ path: portInfo.path, success: false, msg: `Failed to create Modbus ${tagName}: ${error.message}` })
       }
     })
   }

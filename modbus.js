@@ -10,6 +10,36 @@ export class Modbus extends SerialReqManager {
         super(baudrate, tag, port, parity, policy)
         this.name = null
         this.NodeAddress = null
+        this.requestQueue = [] // Fila de requisições
+        this.isProcessing = false // Controle de processamento da fila
+    }
+
+    // Processa a próxima requisição na fila
+    async processQueue() {
+        if (this.isProcessing || this.requestQueue.length === 0) {
+            return
+        }
+
+        this.isProcessing = true
+        const { request, resolve, reject } = this.requestQueue.shift()
+
+        try {
+            const result = await request()
+            resolve(result)
+        } catch (error) {
+            reject(error)
+        } finally {
+            this.isProcessing = false
+            this.processQueue() // Processa a próxima requisição
+        }
+    }
+
+    // Enfileira uma requisição
+    enqueueRequest(request) {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({ request, resolve, reject })
+            this.processQueue()
+        })
     }
 
     /**
@@ -23,26 +53,28 @@ export class Modbus extends SerialReqManager {
      * await mdb.create();
      */
     async create() {
-        let result = await Socket.sendRequest(
-            Socket.Events.CREATE_MODBUS_REQ,
-            { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } },
-            Socket.Events.CREATE_MODBUS_RES
-        )
+        return this.enqueueRequest(async () => {
+            let result = await Socket.sendRequest(
+                Socket.Events.CREATE_MODBUS_REQ,
+                { portInfo: this.PORT, config: { baudRate: this.BAUDRATE, parity: this.PARITY, tagName: this.TAG } },
+                Socket.Events.CREATE_MODBUS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Creating Modbus ${this.PORT?.path || "Unknown"}: Falha ao criar slave (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Creating Modbus ${this.PORT?.path || "Unknown"}: Falha ao criar slave (timeout)`
+                }
             }
-        }
 
-        Log.console(
-            `MDB ${this.PORT == null ? "?" : this.PORT.path}: ${result.msg}`,
-            result.success ? this.Log.success : this.Log.error
-        )
+            Log.console(
+                `MDB ${this.PORT == null ? "?" : this.PORT.path}: ${result.msg}`,
+                result.success ? this.Log.success : this.Log.error
+            )
 
-        return result
+            return result
+        })
     }
 
     /**
@@ -56,26 +88,28 @@ export class Modbus extends SerialReqManager {
      * await modbus.openSlave();
      */
     async openSlave() {
-        let result = await Socket.sendRequest(
-            Socket.Events.OPEN_MODBUS_REQ,
-            { tagName: this.TAG },
-            Socket.Events.OPEN_MODBUS_RES
-        )
+        return this.enqueueRequest(async () => {
+            let result = await Socket.sendRequest(
+                Socket.Events.OPEN_MODBUS_REQ,
+                { tagName: this.TAG },
+                Socket.Events.OPEN_MODBUS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Opening Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao abrir slave (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Opening Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao abrir slave (timeout)`
+                }
             }
-        }
 
-        Log.console(
-            `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
-            result.success ? this.Log.success : this.Log.error
-        )
+            Log.console(
+                `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
+                result.success ? this.Log.success : this.Log.error
+            )
 
-        return result
+            return result
+        })
     }
 
     /**
@@ -88,26 +122,28 @@ export class Modbus extends SerialReqManager {
      * await modbus.closeSlave();
      */
     async closeSlave() {
-        let result = await Socket.sendRequest(
-            Socket.Events.CLOSE_MODBUS_REQ,
-            { tagName: this.TAG },
-            Socket.Events.CLOSE_MODBUS_RES
-        )
+        return this.enqueueRequest(async () => {
+            let result = await Socket.sendRequest(
+                Socket.Events.CLOSE_MODBUS_REQ,
+                { tagName: this.TAG },
+                Socket.Events.CLOSE_MODBUS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Closing Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao fechar slave (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Closing Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao fechar slave (timeout)`
+                }
             }
-        }
 
-        Log.console(
-            `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
-            result.success ? this.Log.success : this.Log.error
-        )
+            Log.console(
+                `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
+                result.success ? this.Log.success : this.Log.error
+            )
 
-        return result
+            return result
+        })
     }
 
     /**
@@ -121,26 +157,28 @@ export class Modbus extends SerialReqManager {
      * const result = await mdb.freeSlave();
      */
     async freeSlave() {
-        let result = await Socket.sendRequest(
-            Socket.Events.FREE_SLAVE_REQ,
-            { tagName: this.TAG },
-            Socket.Events.FREE_SLAVE_RES
-        )
+        return this.enqueueRequest(async () => {
+            let result = await Socket.sendRequest(
+                Socket.Events.FREE_SLAVE_REQ,
+                { tagName: this.TAG },
+                Socket.Events.FREE_SLAVE_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Freeing Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao liberar slave (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Freeing Modbus ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao liberar slave (timeout)`
+                }
             }
-        }
 
-        Log.console(
-            `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
-            result.success ? this.Log.success : this.Log.error
-        )
+            Log.console(
+                `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
+                result.success ? this.Log.success : this.Log.error
+            )
 
-        return result
+            return result
+        })
     }
 
     /**
@@ -154,30 +192,32 @@ export class Modbus extends SerialReqManager {
      * const result = await mdb.setNodeAddress(1);
      */
     async setNodeAddress(nodeAddress) {
-        let result = await Socket.sendRequest(
-            Socket.Events.SET_NODE_ADDRESS_REQ,
-            { nodeAddress, tagName: this.TAG },
-            Socket.Events.SET_NODE_ADDRESS_RES
-        )
+        return this.enqueueRequest(async () => {
+            let result = await Socket.sendRequest(
+                Socket.Events.SET_NODE_ADDRESS_REQ,
+                { nodeAddress, tagName: this.TAG },
+                Socket.Events.SET_NODE_ADDRESS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Setting node address for ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao definir endereço (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Setting node address for ${this.PORT?.path || "Unknown"} ${this.TAG}: Falha ao definir endereço (timeout)`
+                }
             }
-        }
 
-        if (result.success) {
-            this.NodeAddress = result.addr
-        }
+            if (result.success) {
+                this.NodeAddress = result.addr
+            }
 
-        Log.console(
-            `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
-            result.success ? this.Log.success : this.Log.error
-        )
+            Log.console(
+                `MDB ADDR ${this.PORT == null ? "?" : this.PORT.path} ${this.TAG}: ${result.msg}`,
+                result.success ? this.Log.success : this.Log.error
+            )
 
-        return result
+            return result
+        })
     }
 
     /**
@@ -188,27 +228,29 @@ export class Modbus extends SerialReqManager {
      * @returns {Promise<{success: boolean, msg: string}>} Uma promessa que resolve para um objeto com o status de sucesso e uma mensagem.
      */
     async ReadDeviceIdentification(idCode, objectId) {
-        Log.console(
-            `MDB F43 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: idCode => ${idCode} objectId => ${objectId}`,
-            this.Log.req
-        )
+        return this.enqueueRequest(async () => {
+            Log.console(
+                `MDB F43 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: idCode => ${idCode} objectId => ${objectId}`,
+                this.Log.req
+            )
 
-        let result = await Socket.sendRequest(
-            Socket.Events.READ_DEVICE_ID_REQ,
-            { idCode, objectId, tagName: this.TAG },
-            Socket.Events.READ_DEVICE_ID_RES
-        )
+            let result = await Socket.sendRequest(
+                Socket.Events.READ_DEVICE_ID_REQ,
+                { idCode, objectId, tagName: this.TAG },
+                Socket.Events.READ_DEVICE_ID_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Reading device ID for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler identificação (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Reading device ID for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler identificação (timeout)`
+                }
             }
-        }
 
-        result.success ? console.log(result.msg) : console.error(result.msg)
-        return result
+            result.success ? console.log(result.msg) : console.error(result.msg)
+            return result
+        })
     }
 
     /**
@@ -224,34 +266,36 @@ export class Modbus extends SerialReqManager {
      * const result = await modbus.ReadInputRegisters(0, 10);
      */
     async ReadInputRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
-        Log.console(
-            `MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
-            this.Log.req
-        )
+        return this.enqueueRequest(async () => {
+            Log.console(
+                `MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
+                this.Log.req
+            )
 
-        let result = await Socket.sendRequest(
-            Socket.Events.READ_INPUT_REGISTERS_REQ,
-            { startAddress, qty, tagName: this.TAG },
-            Socket.Events.READ_INPUT_REGISTERS_RES
-        )
+            let result = await Socket.sendRequest(
+                Socket.Events.READ_INPUT_REGISTERS_REQ,
+                { startAddress, qty, tagName: this.TAG },
+                Socket.Events.READ_INPUT_REGISTERS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Reading input registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Reading input registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+                }
             }
-        }
 
-        result.success ? console.log(result.msg) : console.error(result.msg)
+            result.success ? console.log(result.msg) : console.error(result.msg)
 
-        if (result.success) {
-            return result
-        } else if (tryNumber < maxTries) {
-            return await this.ReadInputRegisters(startAddress, qty, tryNumber + 1, maxTries)
-        } else {
-            return result
-        }
+            if (result.success) {
+                return result
+            } else if (tryNumber < maxTries) {
+                return await this.ReadInputRegisters(startAddress, qty, tryNumber + 1, maxTries)
+            } else {
+                return result
+            }
+        })
     }
 
     /**
@@ -267,34 +311,36 @@ export class Modbus extends SerialReqManager {
      * const { success, msg } = await modbus.ReadHoldingRegisters(0, 10);
      */
     async ReadHoldingRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
-        Log.console(
-            `MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
-            this.Log.req
-        )
+        return this.enqueueRequest(async () => {
+            Log.console(
+                `MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
+                this.Log.req
+            )
 
-        let result = await Socket.sendRequest(
-            Socket.Events.READ_HOLDING_REGISTERS_REQ,
-            { startAddress, qty, tagName: this.TAG },
-            Socket.Events.READ_HOLDING_REGISTERS_RES
-        )
+            let result = await Socket.sendRequest(
+                Socket.Events.READ_HOLDING_REGISTERS_REQ,
+                { startAddress, qty, tagName: this.TAG },
+                Socket.Events.READ_HOLDING_REGISTERS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Reading holding registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Reading holding registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+                }
             }
-        }
 
-        result.success ? console.log(result.msg) : console.error(result.msg)
+            result.success ? console.log(result.msg) : console.error(result.msg)
 
-        if (result.success) {
-            return result
-        } else if (tryNumber < maxTries) {
-            return await this.ReadHoldingRegisters(startAddress, qty, tryNumber + 1, maxTries)
-        } else {
-            return result
-        }
+            if (result.success) {
+                return result
+            } else if (tryNumber < maxTries) {
+                return await this.ReadHoldingRegisters(startAddress, qty, tryNumber + 1, maxTries)
+            } else {
+                return result
+            }
+        })
     }
 
     /**
@@ -310,34 +356,36 @@ export class Modbus extends SerialReqManager {
      * const { success, msg } = await mdb.WriteSingleRegister(0x00, 0x01);
      */
     async WriteSingleRegister(startAddress, value, tryNumber = 1, maxTries = 3) {
-        Log.console(
-            `MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`,
-            this.Log.req
-        )
+        return this.enqueueRequest(async () => {
+            Log.console(
+                `MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`,
+                this.Log.req
+            )
 
-        let result = await Socket.sendRequest(
-            Socket.Events.WRITE_HOLDING_REGISTER_REQ,
-            { startAddress, value, tagName: this.TAG },
-            Socket.Events.WRITE_HOLDING_REGISTER_RES
-        )
+            let result = await Socket.sendRequest(
+                Socket.Events.WRITE_HOLDING_REGISTER_REQ,
+                { startAddress, value, tagName: this.TAG },
+                Socket.Events.WRITE_HOLDING_REGISTER_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Writing single register for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registro (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Writing single register for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registro (timeout)`
+                }
             }
-        }
 
-        result.success ? console.log(result.msg) : console.error(result.msg)
+            result.success ? console.log(result.msg) : console.error(result.msg)
 
-        if (result.success) {
-            return result
-        } else if (tryNumber < maxTries) {
-            return await this.WriteSingleRegister(startAddress, value, tryNumber + 1, maxTries)
-        } else {
-            return result
-        }
+            if (result.success) {
+                return result
+            } else if (tryNumber < maxTries) {
+                return await this.WriteSingleRegister(startAddress, value, tryNumber + 1, maxTries)
+            } else {
+                return result
+            }
+        })
     }
 
     /**
@@ -353,33 +401,35 @@ export class Modbus extends SerialReqManager {
      * const { success, msg } = await mdb.WriteMultipleRegisters(0x00, [0x01, 0x02]);
      */
     async WriteMultipleRegisters(startAddress, arrValues, tryNumber = 1, maxTries = 3) {
-        Log.console(
-            `MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`,
-            this.Log.req
-        )
+        return this.enqueueRequest(async () => {
+            Log.console(
+                `MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`,
+                this.Log.req
+            )
 
-        let result = await Socket.sendRequest(
-            Socket.Events.WRITE_HOLDING_REGISTERS_REQ,
-            { startAddress, arrValues, tagName: this.TAG },
-            Socket.Events.WRITE_HOLDING_REGISTERS_RES
-        )
+            let result = await Socket.sendRequest(
+                Socket.Events.WRITE_HOLDING_REGISTERS_REQ,
+                { startAddress, arrValues, tagName: this.TAG },
+                Socket.Events.WRITE_HOLDING_REGISTERS_RES
+            )
 
-        if (result == null) {
-            result = {
-                success: false,
-                path: this.PORT?.path || "Unknown",
-                msg: `Writing multiple registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registros (timeout)`
+            if (result == null) {
+                result = {
+                    success: false,
+                    path: this.PORT?.path || "Unknown",
+                    msg: `Writing multiple registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registros (timeout)`
+                }
             }
-        }
 
-        result.success ? console.log(result.msg) : console.error(result.msg)
+            result.success ? console.log(result.msg) : console.error(result.msg)
 
-        if (result.success) {
-            return result
-        } else if (tryNumber < maxTries) {
-            return await this.WriteMultipleRegisters(startAddress, arrValues, tryNumber + 1, maxTries)
-        } else {
-            return result
-        }
+            if (result.success) {
+                return result
+            } else if (tryNumber < maxTries) {
+                return await this.WriteMultipleRegisters(startAddress, arrValues, tryNumber + 1, maxTries)
+            } else {
+                return result
+            }
+        })
     }
 }
