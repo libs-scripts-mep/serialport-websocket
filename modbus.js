@@ -267,34 +267,43 @@ export class Modbus extends SerialReqManager {
      */
     async ReadInputRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
         return this.enqueueRequest(async () => {
-            Log.console(
-                `MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
-                this.Log.req
-            )
+            let currentTry = tryNumber
+            let result = null
 
-            let result = await Socket.sendRequest(
-                Socket.Events.READ_INPUT_REGISTERS_REQ,
-                { startAddress, qty, tagName: this.TAG },
-                Socket.Events.READ_INPUT_REGISTERS_RES
-            )
+            while (currentTry <= maxTries) {
+                Log.console(
+                    `MDB F04 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty} (Try ${currentTry}/${maxTries})`,
+                    this.Log.req
+                )
 
-            if (result == null) {
-                result = {
-                    success: false,
-                    path: this.PORT?.path || "Unknown",
-                    msg: `Reading input registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+                result = await Socket.sendRequest(
+                    Socket.Events.READ_INPUT_REGISTERS_REQ,
+                    { startAddress, qty, tagName: this.TAG },
+                    Socket.Events.READ_INPUT_REGISTERS_RES
+                )
+
+                if (result == null) {
+                    result = {
+                        success: false,
+                        path: this.PORT?.path || "Unknown",
+                        msg: `Reading input registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout, try ${currentTry}/${maxTries})`
+                    }
+                }
+
+                result.success ? console.log(result.msg) : console.error(result.msg)
+
+                if (result.success) {
+                    return result
+                }
+
+                currentTry++
+                if (currentTry <= maxTries) {
+                    // Aguardar um pequeno intervalo antes da próxima tentativa
+                    await Socket.delay(100)
                 }
             }
 
-            result.success ? console.log(result.msg) : console.error(result.msg)
-
-            if (result.success) {
-                return result
-            } else if (tryNumber < maxTries) {
-                return await this.ReadInputRegisters(startAddress, qty, tryNumber + 1, maxTries)
-            } else {
-                return result
-            }
+            return result // Retorna o último resultado (falha) após maxTries
         })
     }
 
@@ -312,34 +321,42 @@ export class Modbus extends SerialReqManager {
      */
     async ReadHoldingRegisters(startAddress, qty, tryNumber = 1, maxTries = 3) {
         return this.enqueueRequest(async () => {
-            Log.console(
-                `MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty}`,
-                this.Log.req
-            )
+            let currentTry = tryNumber
+            let result = null
 
-            let result = await Socket.sendRequest(
-                Socket.Events.READ_HOLDING_REGISTERS_REQ,
-                { startAddress, qty, tagName: this.TAG },
-                Socket.Events.READ_HOLDING_REGISTERS_RES
-            )
+            while (currentTry <= maxTries) {
+                Log.console(
+                    `MDB F03 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) Qty => ${qty} (Try ${currentTry}/${maxTries})`,
+                    this.Log.req
+                )
 
-            if (result == null) {
-                result = {
-                    success: false,
-                    path: this.PORT?.path || "Unknown",
-                    msg: `Reading holding registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout)`
+                result = await Socket.sendRequest(
+                    Socket.Events.READ_HOLDING_REGISTERS_REQ,
+                    { startAddress, qty, tagName: this.TAG },
+                    Socket.Events.READ_HOLDING_REGISTERS_RES
+                )
+
+                if (result == null) {
+                    result = {
+                        success: false,
+                        path: this.PORT?.path || "Unknown",
+                        msg: `Reading holding registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao ler registros (timeout, try ${currentTry}/${maxTries})`
+                    }
+                }
+
+                result.success ? console.log(result.msg) : console.error(result.msg)
+
+                if (result.success) {
+                    return result
+                }
+
+                currentTry++
+                if (currentTry <= maxTries) {
+                    await Socket.delay(100)
                 }
             }
 
-            result.success ? console.log(result.msg) : console.error(result.msg)
-
-            if (result.success) {
-                return result
-            } else if (tryNumber < maxTries) {
-                return await this.ReadHoldingRegisters(startAddress, qty, tryNumber + 1, maxTries)
-            } else {
-                return result
-            }
+            return result
         })
     }
 
@@ -357,34 +374,42 @@ export class Modbus extends SerialReqManager {
      */
     async WriteSingleRegister(startAddress, value, tryNumber = 1, maxTries = 3) {
         return this.enqueueRequest(async () => {
-            Log.console(
-                `MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value}`,
-                this.Log.req
-            )
+            let currentTry = tryNumber
+            let result = null
 
-            let result = await Socket.sendRequest(
-                Socket.Events.WRITE_HOLDING_REGISTER_REQ,
-                { startAddress, value, tagName: this.TAG },
-                Socket.Events.WRITE_HOLDING_REGISTER_RES
-            )
+            while (currentTry <= maxTries) {
+                Log.console(
+                    `MDB F06 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) value => ${value} (Try ${currentTry}/${maxTries})`,
+                    this.Log.req
+                )
 
-            if (result == null) {
-                result = {
-                    success: false,
-                    path: this.PORT?.path || "Unknown",
-                    msg: `Writing single register for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registro (timeout)`
+                result = await Socket.sendRequest(
+                    Socket.Events.WRITE_HOLDING_REGISTER_REQ,
+                    { startAddress, value, tagName: this.TAG },
+                    Socket.Events.WRITE_HOLDING_REGISTER_RES
+                )
+
+                if (result == null) {
+                    result = {
+                        success: false,
+                        path: this.PORT?.path || "Unknown",
+                        msg: `Writing single register for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registro (timeout, try ${currentTry}/${maxTries})`
+                    }
+                }
+
+                result.success ? console.log(result.msg) : console.error(result.msg)
+
+                if (result.success) {
+                    return result
+                }
+
+                currentTry++
+                if (currentTry <= maxTries) {
+                    await Socket.delay(100)
                 }
             }
 
-            result.success ? console.log(result.msg) : console.error(result.msg)
-
-            if (result.success) {
-                return result
-            } else if (tryNumber < maxTries) {
-                return await this.WriteSingleRegister(startAddress, value, tryNumber + 1, maxTries)
-            } else {
-                return result
-            }
+            return result
         })
     }
 
@@ -402,34 +427,42 @@ export class Modbus extends SerialReqManager {
      */
     async WriteMultipleRegisters(startAddress, arrValues, tryNumber = 1, maxTries = 3) {
         return this.enqueueRequest(async () => {
-            Log.console(
-                `MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}]`,
-                this.Log.req
-            )
+            let currentTry = tryNumber
+            let result = null
 
-            let result = await Socket.sendRequest(
-                Socket.Events.WRITE_HOLDING_REGISTERS_REQ,
-                { startAddress, arrValues, tagName: this.TAG },
-                Socket.Events.WRITE_HOLDING_REGISTERS_RES
-            )
+            while (currentTry <= maxTries) {
+                Log.console(
+                    `MDB F16 ${this.PORT == null ? "?" : this.PORT.path} ${this.name || this.TAG}: Addr => ${startAddress} (0x${SerialUtil.intBuffToStr([startAddress], SerialUtil.DataTypes.WORD)}) arrValues => [${arrValues}] (Try ${currentTry}/${maxTries})`,
+                    this.Log.req
+                )
 
-            if (result == null) {
-                result = {
-                    success: false,
-                    path: this.PORT?.path || "Unknown",
-                    msg: `Writing multiple registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registros (timeout)`
+                result = await Socket.sendRequest(
+                    Socket.Events.WRITE_HOLDING_REGISTERS_REQ,
+                    { startAddress, arrValues, tagName: this.TAG },
+                    Socket.Events.WRITE_HOLDING_REGISTERS_RES
+                )
+
+                if (result == null) {
+                    result = {
+                        success: false,
+                        path: this.PORT?.path || "Unknown",
+                        msg: `Writing multiple registers for ${this.PORT?.path || "Unknown"} ${this.name || this.TAG}: Falha ao escrever registros (timeout, try ${currentTry}/${maxTries})`
+                    }
+                }
+
+                result.success ? console.log(result.msg) : console.error(result.msg)
+
+                if (result.success) {
+                    return result
+                }
+
+                currentTry++
+                if (currentTry <= maxTries) {
+                    await Socket.delay(100)
                 }
             }
 
-            result.success ? console.log(result.msg) : console.error(result.msg)
-
-            if (result.success) {
-                return result
-            } else if (tryNumber < maxTries) {
-                return await this.WriteMultipleRegisters(startAddress, arrValues, tryNumber + 1, maxTries)
-            } else {
-                return result
-            }
+            return result
         })
     }
 }
