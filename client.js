@@ -203,7 +203,7 @@ export class Socket {
 
         return Promise.race([
             new Promise((resolve) => {
-                FWLink.PVIEventObserver.add((message, params) => {
+                FWLink.PVIEventObserver.add(async (message, params) => {
                     const msg = params?.[0]
 
                     if (this.debugMode && msg.includes("[SERIAL SERVER]")) {
@@ -211,6 +211,7 @@ export class Socket {
                     }
 
                     if (msg.includes("[SERIAL SERVER]") && msg.includes("Serial WebSocket executando em")) {
+                        await this.connect()
                         resolve({ success: true, msg })
                     }
                 }, "PVI.Sniffer.sniffer.PID_")
@@ -230,8 +231,8 @@ export class Socket {
     }
 
     static {
-        this.connect().catch(this.startWebsocket())
-        // Conectar apenas quando necessário (em sendRequest ou startWebsocket)
+        this.connect()
+            .catch(this.startWebsocket())
         window.Socket = this
     }
 }
